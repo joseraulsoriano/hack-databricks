@@ -1,11 +1,49 @@
-.venv/
-__pycache__/
-*.pyc
-.DS_Store
+# --- Secretos y configuración local ---
 .env
-# Corpus descargado: vive en /Volumes/workspace/lab/raw, no en git
-data/
-# Estado local del instalador de skills de Databricks
+.env.*
+!.env.example
+*.pem
+*.key
+.databrickscfg
+# Estado local del instalador de skills de Databricks (contiene rutas de la máquina)
 .databricks/
-# Worktrees temporales de Claude Code
+
+# --- Datos: viven en /Volumes/workspace/lab/raw, no en git ---
+data/
+*.cif
+*.pdb
+*.tar.gz
+*.jsonl
+# Excepción: fixtures pequeños para pruebas sin conexión
+!fixtures/**/*.jsonl
+
+# --- Python ---
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.ipynb_checkpoints/
+.ruff_cache/
+mlruns/
+
+# --- Unity / AR-VR ---
+ar_vr_client/Library/
+ar_vr_client/Temp/
+ar_vr_client/Obj/
+ar_vr_client/Build/
+ar_vr_client/Logs/
+ar_vr_client/UserSettings/
+*.apk
+*.aab
+
+# --- Sistema y editores ---
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+
+# --- Worktrees temporales de agentes ---
 .claude/worktrees/

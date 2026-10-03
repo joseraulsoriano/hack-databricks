@@ -1,0 +1,114 @@
+# hack-databricks — Laboratorio Científico Agéntico
+
+Reto **Agentic Scientific Discovery** · 7th Global AI Hackathon · Databricks × Hack-Nation × MIT Club
+
+Un laboratorio de agentes que acelera el descubrimiento de **enzimas que degradan PET**
+(plástico): busca evidencia citada, propone hipótesis, corre experimentos computacionales,
+valida con rigor estadístico y muestra el proceso en realidad virtual sobre Meta Quest 2.
+
+> **Pregunta científica:** ¿Qué propiedades de una PET hidrolasa predicen su actividad a 60 °C,
+> y puede un laboratorio de agentes encontrarlas con menos evaluaciones que un cribado exhaustivo?
+
+---
+
+## Por qué este nicho
+
+El Nobel de Química 2024 premió la predicción y el diseño de proteínas. AlphaFold resolvió
+*qué forma* tienen; el cuello de botella hoy es *qué variante probar primero*. Para las PET
+hidrolasas no existe una base de datos limpia que relacione mutación con termoestabilidad:
+ese dato está disperso en cientos de artículos. Ese es el cuello de botella que ataca este lab.
+
+---
+
+## Arquitectura
+
+```
+Fuentes abiertas          Unity Catalog (workspace.lab)        Agentes (Omnigent)      Meta Quest 2
+──────────────────        ─────────────────────────────        ──────────────────      ────────────
+Europe PMC    ─┐
+OpenAlex       │  conectores   documents_staging  ──curación──> documents_curated
+RCSB PDB       ├──────────────>      │                                 │ Delta Sync
+AlphaFold DB   │                     │                                 ▼
+Zenodo        ─┘                     │                          índice AI Search ──> Literature agent ─┐
+                                     │                                                                 │
+                              enzyme_features  ─┐                                      Insight agent ──┤
+                              pet_activity      ├─> pet_activity_ml ──> Experiment runner ─────────────┤
+                                                ┘                                      Analysis agent ─┤
+                                                                                       Safety agent ───┤
+                                     research_record  <──── cada handoff, decisión y aprobación ───────┘
+                                            │
+                                            └──> WebSocket ──> visor VR: el grafo crece en vivo
+```
+
+---
+
+## Estado
+
+| Pieza | Estado |
+|---|---|
+| Esquema `workspace.lab` y Volume | ✅ creados |
+| Conectores (5 fuentes) | ✅ ~4 900 documentos en `documents_staging` |
+| Tablas numéricas para modelar | ✅ `enzyme_features` (213), `pet_activity` (1 570), vista `pet_activity_ml` |
+| Curación → `documents_curated` | ⏳ ver `docs/CURACION.md` |
+| Índice AI Search | ⏳ pendiente del endpoint `lab-vs` |
+| Grafo de agentes Omnigent | ⏳ |
+| Puente API + visor Quest 2 | ⏳ |
+
+---
+
+## Arranque rápido
+
+```bash
+git clone git@github.com:joseraulsoriano/hack-databricks.git && cd hack-databricks
+uv sync
+cp .env.example .env
+
+brew tap databricks/tap && brew install databricks
+databricks auth login --host https://dbc-19f58290-50fb.cloud.databricks.com --profile hack
+databricks current-user me --profile hack
+
+uv run python -c "from data_pipeline.databricks_io import Databricks; print(Databricks().sql('SHOW TABLES IN workspace.lab'))"
+```
+
+Omnigent (gestionado en el workspace):
+
+```bash
+uv tool install "omnigent[databricks]"
+omnigent login dbc-19f58290-50fb.cloud.databricks.com/omnigent
+```
+
+---
+
+## Estructura
+
+```
+data_pipeline/        Conectores e ingesta  → docs en data_pipeline/README.md
+  connectors/         europepmc, openalex, pdb, alphafold, zenodo
+  datasets/           pet_activity: secuencias → tabla numérica (Biopython)
+  databricks_io.py    SQL y subida al Volume
+agent_lab/            Agentes Omnigent y herramientas de datos
+ar_vr_bridge/         API + WebSocket para el visor
+sql/                  Esquema de Unity Catalog
+docs/                 CURACION.md · PROMPT_CURACION.md
+```
+
+## Ramas
+
+| Rama | Uso |
+|---|---|
+| `main` | Rama general, siempre estable |
+| `test` | Pruebas e integración |
+| `algoritmos` | Curación de datos y modelos predictivos |
+
+---
+
+## Equipo
+
+5 personas: orquestación de agentes · curación y algoritmos · RAG y endpoints ·
+experimento y validación · interfaz AR/VR.
+
+## Datos y licencias
+
+Europe PMC (licencia por artículo) · OpenAlex (CC0) · RCSB PDB (CC0) · AlphaFold DB (CC-BY-4.0) ·
+Zenodo [10.5281/zenodo.15417757](https://doi.org/10.5281/zenodo.15417757) (CC-BY-4.0,
+Norton-Baker et al. 2025). La licencia se conserva por documento en `documents_staging.license`.
