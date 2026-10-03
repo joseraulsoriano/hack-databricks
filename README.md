@@ -101,9 +101,15 @@ data_pipeline/        Conectores e ingesta  → docs en data_pipeline/README.md
   datasets/           pet_activity: secuencias → tabla numérica (Biopython)
   databricks_io.py    SQL y subida al Volume
 agent_lab/            Agentes Omnigent y herramientas de datos
-ar_vr_bridge/         API + WebSocket para el visor
+ar_vr_bridge/         Puente API + WebSocket y esqueleto del visor WebXR
 sql/                  Esquema de Unity Catalog
-docs/                 CURACION.md · PROMPT_CURACION.md
+docs/                 Arranque por persona:
+  PROMPT_CURACION.md    curación de datos, índice RAG y modelos
+  PROMPT_VISOR.md       visor Quest 2 y voz con ElevenLabs
+  CURACION.md           tablas, índice y cuidados estadísticos
+  VISOR.md              contrato de eventos y presupuesto de rendimiento
+  ALCANCE.md            qué hace y qué no hace el proyecto
+
 ```
 
 ## Ramas
