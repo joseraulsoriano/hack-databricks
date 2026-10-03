@@ -9,6 +9,20 @@ valida con rigor estadístico y muestra el proceso en realidad virtual sobre Met
 > **Pregunta científica:** ¿Qué propiedades de una PET hidrolasa predicen su actividad a 60 °C,
 > y puede un laboratorio de agentes encontrarlas con menos evaluaciones que un cribado exhaustivo?
 
+## Alcance
+
+Este proyecto es **recuperación de literatura y análisis estadístico sobre datos ya publicados**.
+
+Lee artículos de acceso abierto, los organiza con sus citas y licencias, calcula descriptores
+fisicoquímicos agregados de secuencias publicadas (Biopython) y entrena modelos que relacionan
+esos descriptores con actividad medida y publicada por terceros.
+
+**No diseña ni genera secuencias de proteínas, no propone modificaciones genéticas, no incluye
+protocolos de laboratorio húmedo y no produce datos experimentales nuevos.** El cuello de botella
+que ataca es documental: consolidar lo que cientos de artículos ya publicaron por separado.
+
+Detalle completo de límites, controles y validación pendiente en **[`docs/ALCANCE.md`](docs/ALCANCE.md)**.
+
 ---
 
 ## Por qué este nicho

@@ -7,6 +7,10 @@ Pregunta científica del lab:
 > ¿Qué propiedades de una PET hidrolasa predicen su actividad a 60 °C, y puede un lab de
 > agentes encontrarlas con menos evaluaciones que un cribado exhaustivo?
 
+**Alcance:** curación de literatura publicada y modelado estadístico sobre datos ya publicados.
+No se diseñan secuencias ni se proponen modificaciones biológicas. Lee
+[`ALCANCE.md`](ALCANCE.md) antes de empezar.
+
 ---
 
 ## 1. Acceso a Databricks
