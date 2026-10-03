@@ -1,0 +1,11 @@
+.venv/
+__pycache__/
+*.pyc
+.DS_Store
+.env
+# Corpus descargado: vive en /Volumes/workspace/lab/raw, no en git
+data/
+# Estado local del instalador de skills de Databricks
+.databricks/
+# Worktrees temporales de Claude Code
+.claude/worktrees/
