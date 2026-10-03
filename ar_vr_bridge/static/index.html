@@ -1,0 +1,247 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
+<title>Laboratorio Científico Agéntico — visor</title>
+<style>
+  :root { color-scheme: dark; }
+  body { margin:0; background:#06080f; color:#e8ecf4; font:14px/1.5 system-ui, sans-serif; overflow:hidden; }
+  #ui { position:fixed; inset:auto auto 16px 16px; width:min(420px, calc(100vw - 32px)); z-index:10; }
+  #bar { display:flex; gap:8px; }
+  input, button { font:inherit; border-radius:8px; border:1px solid #2a3350; background:#121a2e; color:inherit; padding:10px 12px; }
+  input { flex:1; }
+  button { cursor:pointer; background:#1d4ed8; border-color:#1d4ed8; font-weight:600; }
+  button:disabled { opacity:.5; cursor:default; }
+  #stage { margin-top:8px; font-size:12px; color:#8fa0c0; min-height:18px; }
+  #panel { margin-top:8px; background:#0d1424cc; border:1px solid #233; border-radius:10px; padding:12px; max-height:38vh; overflow:auto; display:none; }
+  #panel h2 { margin:0 0 6px; font-size:15px; }
+  .check { display:flex; gap:6px; font-size:12px; }
+  .ok { color:#34d399; } .bad { color:#f87171; }
+  .verdict { display:inline-block; padding:2px 8px; border-radius:999px; font-size:11px; font-weight:700; }
+  .PASS{background:#064e3b;color:#34d399} .WARN{background:#4a3708;color:#fbbf24} .FAIL{background:#4c1111;color:#f87171}
+  #cites { margin-top:8px; font-size:12px; }
+  #cites a { color:#7dd3fc; }
+  #enter { position:fixed; top:16px; right:16px; z-index:10; }
+</style>
+</head>
+<body>
+<div id="ui">
+  <div id="bar">
+    <input id="q" value="¿Qué predice la actividad de una PET hidrolasa a 60 °C?" aria-label="Pregunta">
+    <button id="go">Explorar</button>
+  </div>
+  <div id="stage"></div>
+  <div id="panel">
+    <h2 id="headline"></h2>
+    <div id="conclusion"></div>
+    <div id="checks" style="margin-top:8px"></div>
+    <div id="cites"></div>
+  </div>
+</div>
+
+<script type="importmap">
+{ "imports": {
+  "three": "https://unpkg.com/three@0.169.0/build/three.module.js",
+  "three/addons/": "https://unpkg.com/three@0.169.0/examples/jsm/"
+}}
+</script>
+
+<script type="module">
+import * as THREE from 'three';
+import { VRButton } from 'three/addons/webxr/VRButton.js';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+
+// --- Configuración visual. Cambiar aquí, no en el resto del archivo. -------
+const COLOR = {
+  question:   0x7dd3fc,  evidence: 0x34d399,  variable: 0xfbbf24,
+  hypothesis: 0xa78bfa,  experiment: 0xf472b6, result:  0xf87171,
+};
+const LAYER_GAP = 0.85;      // separación vertical entre capas, en metros
+const RADIUS     = 1.5;      // radio del anillo de cada capa
+const BASE_Y     = 0.4;      // altura del nodo raíz respecto al suelo
+const MAX_NODES  = 120;      // presupuesto para Quest 2
+
+// --- Escena ---------------------------------------------------------------
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x06080f);
+scene.fog = new THREE.Fog(0x06080f, 6, 16);
+
+const camera = new THREE.PerspectiveCamera(60, innerWidth / innerHeight, 0.1, 50);
+camera.position.set(0, 2.2, 4.5);
+
+// Sin WebGL (máquina sin GPU, navegador headless) el resto de la página debe seguir viva:
+// el WebSocket, el panel y las citas se prueban igual, solo falta el grafo.
+let renderer = null;
+try {
+  renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
+  renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+  renderer.setSize(innerWidth, innerHeight);
+  renderer.xr.enabled = true;
+  document.body.appendChild(renderer.domElement);
+  document.body.appendChild(Object.assign(VRButton.createButton(renderer), { id: 'enter' }));
+} catch (err) {
+  document.getElementById('stage').textContent = 'Sin WebGL: el grafo 3D no se dibuja, el resto funciona.';
+  console.warn('WebGL no disponible:', err.message);
+}
+
+scene.add(new THREE.HemisphereLight(0xaaccff, 0x080820, 1.6));
+const key = new THREE.DirectionalLight(0xffffff, 1.1); key.position.set(3, 6, 3); scene.add(key);
+const grid = new THREE.GridHelper(14, 14, 0x1b2947, 0x111a2e); scene.add(grid);
+
+const controls = renderer ? new OrbitControls(camera, renderer.domElement) : null;
+controls?.target.set(0, 1.6, 0);
+if (controls) controls.enableDamping = true;
+
+const graph = new THREE.Group();
+graph.position.y = 0;        // en VR el usuario está de pie en el origen
+scene.add(graph);
+
+// --- Estado ---------------------------------------------------------------
+const nodes = new Map();     // id -> { mesh, data }
+const perLayer = new Map();  // layer -> cuántos nodos lleva ya
+const citations = new Map();
+let socket = null;
+
+// Geometrías y materiales compartidos: un draw call por tipo, barato en Quest 2.
+const sphere = new THREE.SphereGeometry(1, 16, 12);
+const materials = Object.fromEntries(Object.entries(COLOR).map(([type, color]) => [
+  type, new THREE.MeshStandardMaterial({ color, emissive: color, emissiveIntensity: 0.35, roughness: 0.4 }),
+]));
+
+function layerPosition(layer) {
+  const index = perLayer.get(layer) ?? 0;
+  perLayer.set(layer, index + 1);
+  // Espiral: cada nodo nuevo de la capa se separa del anterior sin solaparse.
+  const angle = index * 2.399963;                   // ángulo áureo
+  const radius = layer === 0 ? 0 : RADIUS * Math.sqrt((index + 1) / 4);
+  return new THREE.Vector3(Math.cos(angle) * radius, BASE_Y + layer * LAYER_GAP, Math.sin(angle) * radius);
+}
+
+function labelSprite(text, agentGenerated) {
+  const canvas = document.createElement('canvas');
+  canvas.width = 512; canvas.height = 128;
+  const ctx = canvas.getContext('2d');
+  ctx.fillStyle = 'rgba(10,15,28,0.88)';
+  ctx.strokeStyle = agentGenerated ? '#a78bfa' : '#2a3350';
+  ctx.lineWidth = 4;
+  if (agentGenerated) ctx.setLineDash([14, 10]);     // hipótesis generada por agente
+  ctx.beginPath(); ctx.roundRect(4, 4, 504, 120, 16); ctx.fill(); ctx.stroke();
+  ctx.fillStyle = '#e8ecf4';
+  ctx.font = '600 38px system-ui, sans-serif';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(text.slice(0, 26), 24, 64);
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.anisotropy = 4;
+  const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: texture, depthWrite: false }));
+  sprite.scale.set(0.9, 0.225, 1);
+  return sprite;
+}
+
+function addNode(data) {
+  if (nodes.size >= MAX_NODES) return;
+  const size = 0.055 + 0.075 * Math.max(0.15, data.confidence);
+  const mesh = new THREE.Mesh(sphere, materials[data.type] ?? materials.evidence);
+  mesh.scale.setScalar(size);
+  mesh.position.copy(layerPosition(data.layer));
+  mesh.userData = data;
+
+  const label = labelSprite(data.label, data.agent_generated);
+  label.position.set(0, size + 0.16, 0);
+  label.scale.multiplyScalar(1 / size);              // compensa la escala del padre
+  mesh.add(label);
+
+  graph.add(mesh);
+  nodes.set(data.id, { mesh, data });
+
+  // Aparición: crece desde cero en ~400 ms.
+  mesh.scale.setScalar(0.001);
+  const target = size, t0 = performance.now();
+  (function grow() {
+    const k = Math.min(1, (performance.now() - t0) / 400);
+    mesh.scale.setScalar(target * (0.3 + 0.7 * k * (2 - k)));
+    if (k < 1) requestAnimationFrame(grow);
+  })();
+}
+
+function addEdge(data) {
+  const a = nodes.get(data.source), b = nodes.get(data.target);
+  if (!a || !b) return;
+  const geometry = new THREE.BufferGeometry().setFromPoints([a.mesh.position, b.mesh.position]);
+  const material = new THREE.LineBasicMaterial({
+    color: data.relation === 'contradicts' ? 0xf87171 : 0x4b6fa8,
+    transparent: true, opacity: 0.25 + 0.6 * data.weight,
+  });
+  graph.add(new THREE.Line(geometry, material));
+}
+
+// --- Panel 2D (también se ve en VR como overlay del navegador) -------------
+const $ = (id) => document.getElementById(id);
+
+function showAnswer(answer) {
+  $('panel').style.display = 'block';
+  $('headline').textContent = answer.headline;
+  $('conclusion').textContent = answer.conclusion;
+}
+
+function showValidation(validation) {
+  $('checks').innerHTML =
+    `<span class="verdict ${validation.verdict}">${validation.verdict}</span> ` +
+    `confianza ${validation.confidence.toFixed(2)}` +
+    validation.checks.map((c) =>
+      `<div class="check"><span class="${c.passed ? 'ok' : 'bad'}">${c.passed ? '✓' : '✗'}</span>` +
+      `<span>${c.name}: ${c.value} (umbral ${c.threshold})</span></div>`).join('');
+}
+
+function showCitations(list) {
+  list.forEach((c) => citations.set(c.id, c));
+  $('cites').innerHTML = '<b>Fuentes</b><br>' + list.map((c) =>
+    `<a href="${c.url}" target="_blank" rel="noopener">${c.authors_short || c.source} ${c.year || ''}</a> — ${c.title.slice(0, 80)}`
+  ).join('<br>');
+}
+
+// --- Conexión -------------------------------------------------------------
+function explore(query) {
+  nodes.forEach(({ mesh }) => graph.remove(mesh));
+  graph.clear(); nodes.clear(); perLayer.clear();
+  $('panel').style.display = 'none';
+  $('go').disabled = true;
+
+  socket?.close();
+  socket = new WebSocket(`${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/ws/explore`);
+  socket.onopen = () => socket.send(JSON.stringify({ query, mode: 'mock' }));
+  socket.onerror = () => { $('stage').textContent = 'Error de conexión'; $('go').disabled = false; };
+  socket.onmessage = (message) => {
+    const e = JSON.parse(message.data);
+    switch (e.event) {
+      case 'stage':      $('stage').textContent = `${e.message}…`; break;
+      case 'node':       addNode(e.node); break;
+      case 'edge':       addEdge(e.edge); break;
+      case 'citations':  showCitations(e.citations); break;
+      case 'answer':     showAnswer(e.answer); break;
+      case 'validation': showValidation(e.validation); break;
+      case 'done':
+        $('stage').textContent = `Listo en ${(e.latency_ms / 1000).toFixed(1)} s · siguiente: ${e.next_question}`;
+        $('go').disabled = false; break;
+      case 'error':
+        $('stage').textContent = e.message; $('go').disabled = false; break;
+    }
+  };
+}
+
+$('go').onclick = () => explore($('q').value);
+addEventListener('keydown', (e) => { if (e.key === 'Enter') $('go').click(); });
+addEventListener('resize', () => {
+  camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix();
+  renderer?.setSize(innerWidth, innerHeight);
+});
+
+// --- Bucle ----------------------------------------------------------------
+renderer?.setAnimationLoop(() => {
+  graph.rotation.y += 0.0012;             // giro lento: ayuda a leer la profundidad
+  controls.update();
+  renderer.render(scene, camera);
+});
+</script>
+</body>
+</html>
