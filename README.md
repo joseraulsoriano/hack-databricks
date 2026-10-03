@@ -104,6 +104,7 @@ agent_lab/            Agentes Omnigent y herramientas de datos
 ar_vr_bridge/         Puente API + WebSocket y esqueleto del visor WebXR
 sql/                  Esquema de Unity Catalog
 docs/                 Arranque por persona:
+  PROMPT_AGENTE.md      orquestación con Omnigent (30% de la nota)
   PROMPT_CURACION.md    curación de datos, índice RAG y modelos
   PROMPT_VISOR.md       visor Quest 2 y voz con ElevenLabs
   CURACION.md           tablas, índice y cuidados estadísticos
