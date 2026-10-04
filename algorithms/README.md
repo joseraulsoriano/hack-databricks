@@ -52,7 +52,8 @@ uv run python -m algorithms.pet_activity_pipeline --objetivo activity
 ```
 
 - Lee `workspace.lab.pet_activity_ml` y, si Databricks no responde, los CSV locales.
-- Los motores viven fuera del repo: `../ia_generica`, `--ia-generica RUTA` o `IA_GENERICA=RUTA`.
+- Los motores (IDA\*, genético + MLP, alfa-beta) viven en `algorithms/ia_generica/` y son genéricos:
+  sirven para cualquier CSV tabular. Se pueden sustituir con `--ia-generica RUTA` o `IA_GENERICA=RUTA`.
 - Antes de los pasos corre dos baselines en condiciones idénticas: clase mayoritaria y bosque
   con todas las columnas.
 - Resultados en `data/resultados/algorithms/pipeline_<objetivo>.json` (fuera de git).

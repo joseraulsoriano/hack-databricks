@@ -61,7 +61,8 @@ METADATOS = ["design_round", "temporal_split", "_rescued_data"]
 
 def importar_ia_generica(ruta: str | None):
     """Agrega ia_generica al sys.path y devuelve sus modulos."""
-    candidatas = [Path(p) for p in (ruta, os.environ.get("IA_GENERICA"), ROOT.parent / "ia_generica") if p]
+    candidatas = [Path(p) for p in (ruta, os.environ.get("IA_GENERICA"),
+                                    Path(__file__).parent / "ia_generica", ROOT.parent / "ia_generica") if p]
     for c in candidatas:
         if (c / "datos.py").exists():
             sys.path.insert(0, str(c.resolve()))
