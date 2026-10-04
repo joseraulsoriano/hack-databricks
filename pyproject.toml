@@ -11,4 +11,8 @@ dependencies = [
     "pydantic>=2.13.5",
     "uvicorn>=0.54.0",
     "websockets>=17.2",
+    # algorithms/: modelos predictivos sobre pet_activity_ml
+    "pandas>=2.2",
+    "scikit-learn>=1.6",
+    "joblib>=1.4",
 ]
