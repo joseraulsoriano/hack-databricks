@@ -9,6 +9,34 @@ se midió, y para que no prometas al visor algo que el backend no puede sostener
 
 ---
 
+## 0. Reparto de trabajo — quién entrega qué
+
+| Pieza | Quién | Estado |
+|---|---|---|
+| Índice vectorial sobre los trozos curados | `kevdev04` | ⏳ en preparación |
+| **Orquestador de agentes (Omnigent)** | **otro equipo — NO este repo** | ⏳ |
+| Visor VR y Gate API de aprobación | `kevdev04/hacknation` | ✅ funcionando |
+| **Este backend: datos, curación, procedencia, RAG y puente** | **nosotros** | ✅ |
+
+**Este repositorio no entrega el orquestador.** Lo que entrega es el servicio del que el
+orquestador se alimenta: el corpus curado, la puerta de procedencia, la recuperación con cita y
+el puente de eventos hacia el visor.
+
+El punto de enganche es **uno solo**:
+
+```python
+# agent_lab/runtime.py  — lo implementa quien hace el orquestador, no este repo
+async def stream_discovery(query: str, query_id: str):
+    """Generador asíncrono que emite los eventos de ar_vr_bridge/contract.py."""
+```
+
+En cuanto ese archivo exista y exporte esa función, `mode: "live"` deja de caer al simulador y
+el visor consume el laboratorio real **sin cambiar una línea del visor ni del puente**. Todo lo
+que hay que emitir está en `ar_vr_bridge/contract.py`; lo que el visor necesita de cada evento,
+en la sección 5 de este documento.
+
+---
+
 ## 1. Qué es este servicio, en una frase
 
 Recuperación de literatura publicada y análisis estadístico sobre datos ya publicados, con
@@ -151,7 +179,7 @@ el trozo real.
 
 | Pieza | Estado | Consecuencia |
 |---|---|---|
-| `agent_lab/runtime.py` con `stream_discovery(query, query_id)` | ❌ no existe | `mode: "live"` cae al simulador. **Es el punto de conexión del orquestador: una sola función y el visor deja de ver un guion, sin tocar el visor** |
+| `agent_lab/runtime.py` con `stream_discovery(query, query_id)` | ❌ no existe — **lo implementa el equipo del orquestador, no este repo** (ver §0) | Mientras tanto `mode: "live"` cae al simulador, y lo anuncia |
 | `mutant_stability` poblada | ❌ 0 filas | La vía numérica de la puerta no se puede usar |
 | `research_record` escribiéndose | ⚠️ 2 filas | El brief lo exige explícitamente |
 | Índice sobre trozos curados | ⏳ lo prepara `kevdev04` | Hasta entonces, filtro + snippet aproximado |
