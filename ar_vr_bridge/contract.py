@@ -142,15 +142,22 @@ class ErrorEvent(BaseModel):
 
 class AskRequest(BaseModel):
     """Camino rápido para la voz: solo recuperación, sin bucle de agentes."""
-    query: str
-    num_results: int = 5
+    query: str = Field(min_length=1, max_length=500)   # transcripción, tal como se dijo
+    num_results: int = Field(default=5, ge=1, le=10)
+    query_id: str = ""        # lo manda el cliente para correlacionar con /ws/explore
+    language: str = ""        # BCP-47; pista para el idioma de la respuesta
+    asked_by: str = ""        # revisor, del ?reviewer= de la gate
+    source: str = "voice"     # voice | text | agent
 
 
 class AskResponse(BaseModel):
+    schema_version: str = SCHEMA_VERSION
     query_id: str
+    answer: str = ""          # prosa completa, para el panel
     citations: list[Citation] = Field(default_factory=list)
     has_evidence: bool = False
-    tts_text: str = ""        # lo que la voz debe decir si no hay evidencia
+    # <= 40 palabras, se lee en voz alta y debe sostenerse sin las citas.
+    tts_text: str = ""
     latency_ms: int = 0
 
 

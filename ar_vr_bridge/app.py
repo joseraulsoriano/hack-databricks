@@ -18,12 +18,12 @@ import time
 import uuid
 from pathlib import Path
 
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
-from ar_vr_bridge import mock, registro, retrieval
+from ar_vr_bridge import consultas, mock, redaccion, registro, retrieval
 from ar_vr_bridge.contract import (
     SCHEMA_VERSION, Answer, AskRequest, AskResponse, Check, ExploreRequest, ExploreResponse,
     HypothesisReceipt, HypothesisRequest, StageEvent,
@@ -70,16 +70,67 @@ async def ask(request: AskRequest) -> AskResponse:
     No lanza hipótesis ni experimento: por eso cabe donde el bucle completo no cabe.
     Si no hay evidencia por encima del umbral, lo dice en vez de improvisar.
     """
-    query_id = f"q_{uuid.uuid4().hex[:8]}"
-    citations, has_evidence, latency_ms = await asyncio.to_thread(
-        retrieval.search, request.query, request.num_results,
-    )
-    tts_text = "" if has_evidence else (
-        "No encuentro evidencia suficiente sobre eso en el corpus. "
-        "Puedo buscar algo relacionado si quieres."
-    )
-    return AskResponse(query_id=query_id, citations=citations, has_evidence=has_evidence,
-                       tts_text=tts_text, latency_ms=latency_ms)
+    query_id = request.query_id or f"q_{uuid.uuid4().hex[:8]}"
+    consultas.llegada(query_id, request.query, request.source, "live",
+                      request.asked_by, request.language)
+
+    try:
+        citations, has_evidence, latency_ms = await asyncio.to_thread(
+            retrieval.search, request.query, request.num_results,
+        )
+    except Exception as exc:
+        consultas.final(query_id, error=f"{type(exc).__name__}: {exc}")
+        raise HTTPException(status_code=503, detail=f"recuperación no disponible: {exc}")
+
+    if has_evidence:
+        answer, tts_text = redaccion.redactar(citations)
+    else:
+        # Regla del contrato, y la línea que separa esto de un chatbot: sin evidencia
+        # por encima del umbral no se devuelve ni una cita. Una respuesta fluida sin
+        # cita es peor que no responder.
+        citations = []
+        answer = tts_text = ("No encuentro evidencia suficiente sobre eso en el corpus "
+                             "curado. Puedo buscar algo relacionado si quieres.")
+
+    consultas.final(query_id, has_evidence=has_evidence, latency_ms=latency_ms,
+                    citation_doc_ids=[c.doc_id for c in citations])
+    return AskResponse(query_id=query_id, answer=answer, citations=citations,
+                       has_evidence=has_evidence, tts_text=tts_text, latency_ms=latency_ms)
+
+
+@app.get("/api/v1/queries")
+async def listar_consultas(limit: int = 50, since: str = "", asked_by: str = "",
+                           unanswered: bool = False) -> dict:
+    """Las preguntas recibidas, la más reciente primero.
+
+    `unanswered=true` devuelve las que nunca se cerraron: una fila que sigue en
+    `answered = false` una hora después es una corrida que se cayó, y esa es
+    justo la que interesa encontrar.
+    """
+    limit = max(1, min(int(limit), 500))
+    donde, params = ["1=1"], {}
+    if since:
+        donde.append("asked_at > :since")
+        params["since"] = since
+    if asked_by:
+        donde.append("asked_by = :asked_by")
+        params["asked_by"] = asked_by
+    if unanswered:
+        donde.append("answered = false")
+
+    campos = ("query_id, query, source, asked_by, asked_at, mode, language, answered, "
+              "verdict, has_evidence, latency_ms, citation_doc_ids, error")
+    try:
+        filas = await asyncio.to_thread(
+            consultas._cliente().sql,
+            f"SELECT {campos} FROM {consultas.TABLA} WHERE {' AND '.join(donde)} "
+            f"ORDER BY asked_at DESC LIMIT {limit}", params)
+    except Exception as exc:
+        raise HTTPException(status_code=503, detail=f"no se pudo leer {consultas.TABLA}: {exc}")
+
+    nombres = campos.replace(" ", "").split(",")
+    queries = [dict(zip(nombres, fila)) for fila in filas]
+    return {"count": len(queries), "queries": queries}
 
 
 @app.post("/api/v1/hypothesis", response_model=HypothesisReceipt)
@@ -149,6 +200,11 @@ async def _events(query: str, query_id: str, mode: str):
     registro.anotar("handoff", f"consulta recibida del visor: {query[:200]}",
                     session_id=query_id, from_agent="viewer", to_agent="bridge",
                     payload={"query": query, "mode_pedido": mode})
+    # Al recibir, no al terminar: una pregunta que tumbe el lab tiene que dejar fila.
+    consultas.llegada(query_id, query, "text", mode)
+
+    citados: list[str] = []
+    verdict = ""
 
     if mode == "live":
         try:
@@ -166,11 +222,20 @@ async def _events(query: str, query_id: str, mode: str):
         origen = mock.stream(query, query_id)
 
     async for event in origen:
-        if event.event == "done":
-            yield event.model_copy(update={
-                "latency_ms": int((time.monotonic() - started) * 1000)})
-        else:
-            yield event
+        if event.event == "citations":
+            citados.extend(c.doc_id for c in event.citations)
+        elif event.event == "validation":
+            verdict = event.validation.verdict
+        elif event.event == "error":
+            consultas.final(query_id, error=event.message[:900], verdict=verdict,
+                            citation_doc_ids=citados)
+        elif event.event == "done":
+            medida = int((time.monotonic() - started) * 1000)
+            consultas.final(query_id, verdict=verdict, latency_ms=medida,
+                            citation_doc_ids=citados)
+            yield event.model_copy(update={"latency_ms": medida})
+            continue
+        yield event
 
 
 @app.websocket("/ws/explore")

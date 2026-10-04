@@ -85,3 +85,24 @@ CREATE TABLE IF NOT EXISTS workspace.lab.research_record (
   payload     STRING    COMMENT 'JSON con el detalle'
 ) TBLPROPERTIES (delta.enableChangeDataFeed = true)
   COMMENT 'Registro de investigación compartido entre agentes';
+
+-- Toda pregunta que entra al lab, por voz o por texto. Contrato: docs/API.md.
+-- Se inserta AL RECIBIR con answered = false y se actualiza al terminar: si una
+-- pregunta tumba el laboratorio, su fila se queda en answered = false y se puede
+-- encontrar. Escribir solo al terminar perderia justo la que mas interesa ver.
+CREATE TABLE IF NOT EXISTS workspace.lab.queries (
+  query_id         STRING NOT NULL COMMENT 'q_<8 hex>; el mismo id que usa la corrida',
+  query            STRING NOT NULL COMMENT 'El texto TAL CUAL llego: las asperezas del transcriptor son evidencia',
+  source           STRING NOT NULL COMMENT 'voice | text | agent',
+  asked_by         STRING          COMMENT 'Revisor, del ?reviewer= de la gate',
+  asked_at         TIMESTAMP NOT NULL,
+  mode             STRING NOT NULL COMMENT 'live | mock; para no confundir una corrida simulada con una real',
+  language         STRING          COMMENT 'BCP-47 si el cliente lo mando',
+  answered         BOOLEAN NOT NULL,
+  verdict          STRING          COMMENT 'PASS | WARN | FAIL, de Validation',
+  has_evidence     BOOLEAN         COMMENT 'Para /api/v1/ask',
+  latency_ms       INT,
+  citation_doc_ids ARRAY<STRING>   COMMENT 'Los doc_id realmente citados',
+  error            STRING,
+  CONSTRAINT queries_pk PRIMARY KEY (query_id)
+) COMMENT 'Preguntas recibidas por el puente, con su resultado';

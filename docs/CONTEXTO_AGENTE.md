@@ -65,6 +65,7 @@ nuevos. Detalle en [`ALCANCE.md`](ALCANCE.md).
 | `workspace.lab.enzyme_features` | 213 | ✅ | Una fila por enzima, 33 columnas numéricas |
 | `workspace.lab.mutant_stability` | **0** | ⚠️ **vacía** | Cualquier hipótesis que cite un `record_id` se rechaza hoy |
 | `workspace.lab.research_record` | 3 y creciendo | ✅ **el puente ya escribe** | Toda consulta del visor, veredicto de hipótesis y aprobación deja traza |
+| `workspace.lab.queries` | creciendo | ✅ **nueva** | Toda pregunta recibida, con su latencia, `has_evidence` y `doc_id` citados |
 
 ### El índice vectorial no es el corpus curado
 
@@ -136,7 +137,8 @@ fuente de verdad.
 | `POST` | `/api/v1/hypothesis` | **Puerta de entrada.** Admite o rechaza una hipótesis por su procedencia |
 | `WS` | `/ws/explore` | Bucle completo en streaming. Lo consume el visor |
 | `POST` | `/api/v1/explore` | El mismo bucle, de una pieza |
-| `POST` | `/api/v1/ask` | Camino rápido de voz: solo RAG |
+| `POST` | `/api/v1/ask` | Camino rápido de voz: solo RAG. Sin evidencia, `citations: []` |
+| `GET` | `/api/v1/queries` | Qué se ha preguntado y qué corridas se cayeron |
 | `POST` | `/api/v1/approve/{approval_id}` | Respuesta a una aprobación humana |
 
 ### Cómo se alimenta una hipótesis
@@ -262,6 +264,6 @@ No las vuelvas a descubrir. Detalle en [`CURACION.md`](CURACION.md) y
 ## 9. Cómo comprobar que todo esto sigue siendo cierto
 
 ```bash
-uv run python -m unittest discover -s tests -v     # 79 pruebas, sin red ni Databricks
+uv run python -m unittest discover -s tests -v     # 91 pruebas, sin red ni Databricks
 uv run uvicorn ar_vr_bridge.app:app --port 8010    # el puerto que espera el visor
 ```

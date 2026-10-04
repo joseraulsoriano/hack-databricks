@@ -28,6 +28,7 @@ transporte; aquel, la forma de los datos.
 | `POST` | `/api/v1/approve/{approval_id}` | Responder a una aprobación humana | ✅ |
 | `POST` | `/api/v1/hypothesis` | **Puerta de entrada.** Admite o rechaza una hipótesis por su procedencia | ✅ |
 | `POST` | `/api/v1/ask` | **Camino rápido para la voz.** Solo RAG, < 1,5 s | ✅ |
+| `GET` | `/api/v1/queries` | Las preguntas recibidas y su resultado | ✅ |
 
 ---
 
@@ -200,7 +201,47 @@ cotejar, nada se admite a ciegas.
 
 ## `POST /api/v1/ask` — camino rápido para la voz
 
-Implementado y medido: **p50 318 ms** en caliente, 2 054 ms en frío.
+Implementado y medido de extremo a extremo por HTTP: **0,50-0,89 s en caliente**, 3,3 s en frío
+(índice sin calentar). Cumple el presupuesto de 1,5 s con el servidor en marcha.
+
+**Petición:** `query` (1-500), `num_results` (1-10, por defecto 5), y opcionales `query_id`
+(para correlacionar con una corrida de `/ws/explore`), `language` (BCP-47), `asked_by`, `source`
+(`voice` | `text` | `agent`).
+
+**Respuesta:** `schema_version`, `query_id`, `answer`, `citations`, `has_evidence`, `tts_text`
+(≤ 40 palabras) y `latency_ms`.
+
+### `has_evidence` manda
+
+Cuando es `false`, `citations` va **vacío** y `answer` dice que no hay evidencia. Es la línea
+que separa esto de un chatbot: una respuesta fluida sin cita es peor que no responder.
+
+`answer` es **extractivo**: el pasaje citado más su atribución, nunca prosa generada. Así toda
+afirmación es rastreable a un `doc_id` por construcción. Si algún día se genera con un LLM, hay
+que volver a demostrar ese respaldo.
+
+Errores: `422` si `query` falta o se sale de rango, `503` si el índice no responde.
+
+---
+
+## `GET /api/v1/queries` — qué se ha preguntado
+
+Toda pregunta se guarda en `workspace.lab.queries` **al recibirla**, con `answered = false`, y la
+fila se cierra al terminar. Ese orden es el punto: si una pregunta tumba el laboratorio, su fila
+se queda abierta y se puede encontrar. Escribir solo al terminar perdería justo esa.
+
+| Parámetro | Notas |
+|---|---|
+| `limit` | 50 por defecto, tope 500 |
+| `since` | ISO-8601; solo `asked_at` posterior |
+| `asked_by` | Filtra por revisor |
+| `unanswered` | Solo `answered = false`: las corridas que se cayeron |
+
+```bash
+curl -s "http://localhost:8010/api/v1/queries?unanswered=true"
+```
+
+Se apaga con `QUERIES_LOG=0`.
 
 Consulta **solo** el índice vectorial y devuelve una respuesta corta con su cita. No lanza
 hipótesis, ni experimento, ni validación: por eso cabe en el presupuesto de la voz.
