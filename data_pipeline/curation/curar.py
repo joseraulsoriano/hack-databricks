@@ -61,6 +61,8 @@ from collections import Counter
 from datetime import datetime, timezone
 from pathlib import Path
 
+from data_pipeline.curation.etiquetar import etiquetar_trozo
+
 ROOT = Path(__file__).resolve().parents[2]
 SALIDA = ROOT / "data" / "resultados" / "curacion"
 ORIGEN = "workspace.lab.documents_staging"
@@ -138,6 +140,8 @@ def detectar_idioma(texto: str) -> str:
     mejor = max(pts, key=pts.get)
     return mejor if pts[mejor] >= 0.12 * len(palabras) else "desconocido"
 
+
+SUBTEMA_SOLO_NUCLEO = {"nucleo_pet_enzima", "enzima_plasticos_sin_pet"}
 
 RELLENO = re.compile(r"(?i)full text of this (preprint|article) is available as a pdf")
 LINEA_TABLA = re.compile(r"(?i)^(?:supplementary\s+|suppl\.?\s+|extended\s+data\s+)?"
@@ -396,6 +400,7 @@ def leer_staging(db, limite: int | None) -> list[dict]:
 
 def curar(docs: list[dict]) -> tuple[list[dict], dict]:
     informe = {"filas_staging": len(docs), "descartes": Counter(), "trozos_descartados": Counter(), "relevancia": Counter(), "idioma": Counter(),
+               "subtema": Counter(), "tipo_evidencia": Counter(),
                "licencias": Counter(), "anos_sospechosos": 0}
 
     excluidos = [d for d in docs if EXCLUIR_TITULO.search(d.get("title") or "")]
@@ -456,7 +461,15 @@ def curar(docs: list[dict]) -> tuple[list[dict], dict]:
             for k in ("pmid", "pmcid", "journal", "mutations", "uniprot"):
                 if meta_origen.get(k):
                     meta[k] = meta_origen[k]
+            et = etiquetar_trozo(texto_trozo, seccion, d.get("doc_type") or "", meta["es_tabla"])
+            if etiqueta not in SUBTEMA_SOLO_NUCLEO:
+                # Los 7 subtemas describen el nucleo PET-enzima. En un documento periferico
+                # ("depolymerization" de lignina, catalisis con CO2) darian etiquetas enganosas.
+                et["subtopic"] = et["subtopic_secondary"] = None
+            informe["subtema"][et["subtopic"] or "(sin subtema)"] += 1
+            informe["tipo_evidencia"][et["evidence_type"]] += 1
             chunks.append({
+                **et,
                 "chunk_id": f"{d['doc_id']}#{i}", "doc_id": d["doc_id"],
                 "source": d.get("source"), "doc_type": d.get("doc_type"),
                 "title": limpiar_html(d.get("title")), "authors": d.get("authors"), "year": ano,
@@ -481,6 +494,8 @@ def curar(docs: list[dict]) -> tuple[list[dict], dict]:
     informe["trozos_descartados"] = dict(informe["trozos_descartados"])
     informe["relevancia"] = dict(informe["relevancia"])
     informe["idioma"] = dict(informe["idioma"])
+    informe["subtema"] = dict(informe["subtema"].most_common())
+    informe["tipo_evidencia"] = dict(informe["tipo_evidencia"].most_common())
     informe["licencias"] = dict(informe["licencias"].most_common(20))
     return chunks, informe
 
@@ -513,6 +528,9 @@ def publicar(db, chunks: list[dict], aprobador: str) -> None:
                                       "year", "doi", "url", "license", "section", "text",
                                       "metadata")}
         fila["authors"] = _lista_autores(c.get("authors"))
+        fila.update({"relevance": c.get("relevancia"), "language": c.get("idioma"),
+                     "subtopic": c.get("subtopic"), "subtopic_secondary": c.get("subtopic_secondary"),
+                     "evidence_type": c.get("evidence_type"), "enzyme": c.get("enzyme") or []})
         lineas.append(json.dumps(fila, ensure_ascii=False))
     datos = ("\n".join(lineas) + "\n").encode()
     db.w.files.upload(ruta, io.BytesIO(datos), overwrite=True)
@@ -522,21 +540,27 @@ def publicar(db, chunks: list[dict], aprobador: str) -> None:
         MERGE INTO {DESTINO} AS d
         USING (
           SELECT chunk_id, doc_id, source, doc_type, title, authors,
-                 CAST(year AS INT) AS year, doi, url, license, section, text, metadata
+                 CAST(year AS INT) AS year, doi, url, license, section, text, metadata,
+                 relevance, language, subtopic, subtopic_secondary, evidence_type, enzyme
           FROM read_files('{ruta}', format => 'json',
-                          schemaHints => 'authors ARRAY<STRING>, year BIGINT')
+                          schemaHints => 'authors ARRAY<STRING>, enzyme ARRAY<STRING>, year BIGINT')
         ) AS n
         ON d.chunk_id = n.chunk_id
         WHEN MATCHED THEN UPDATE SET
           doc_id = n.doc_id, source = n.source, doc_type = n.doc_type, title = n.title,
           authors = n.authors, year = n.year, doi = n.doi, url = n.url, license = n.license,
           section = n.section, text = n.text, metadata = n.metadata,
+          relevance = n.relevance, language = n.language, subtopic = n.subtopic,
+          subtopic_secondary = n.subtopic_secondary, evidence_type = n.evidence_type,
+          enzyme = n.enzyme,
           approved_by = :aprobador, approved_at = current_timestamp()
         WHEN NOT MATCHED THEN INSERT
           (chunk_id, doc_id, source, doc_type, title, authors, year, doi, url, license,
-           section, text, metadata, approved_by, approved_at)
+           section, text, metadata, relevance, language, subtopic, subtopic_secondary,
+           evidence_type, enzyme, approved_by, approved_at)
           VALUES (n.chunk_id, n.doc_id, n.source, n.doc_type, n.title, n.authors, n.year,
-                  n.doi, n.url, n.license, n.section, n.text, n.metadata,
+                  n.doi, n.url, n.license, n.section, n.text, n.metadata, n.relevance,
+                  n.language, n.subtopic, n.subtopic_secondary, n.evidence_type, n.enzyme,
                   :aprobador, current_timestamp())""", params={"aprobador": aprobador})
     n = db.sql(f"SELECT count(*), count(DISTINCT doc_id) FROM {DESTINO}")[0]
     print(f"   {DESTINO}: {n[0]} chunks de {n[1]} documentos")
@@ -580,6 +604,8 @@ def main() -> None:
           f"(las tablas se dejan enteras a proposito)")
     print(f"  relevancia:              {informe['relevancia']}")
     print(f"  idioma:                  {informe['idioma']}")
+    print(f"  subtema (por trozo):     {informe['subtema']}")
+    print(f"  tipo de evidencia:       {informe['tipo_evidencia']}")
     print(f"  excluidos a mano:        {informe['excluidos_manual']['docs']} ({informe['excluidos_manual']['motivo']})")
     print(f"  anos posteriores a hoy:  {informe['anos_sospechosos']} (marcados, no borrados)")
     print(f"  licencias:               {informe['licencias']}")
