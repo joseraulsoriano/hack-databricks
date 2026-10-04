@@ -139,6 +139,20 @@ class ErrorEvent(BaseModel):
     message: str
 
 
+class AskRequest(BaseModel):
+    """Camino rápido para la voz: solo recuperación, sin bucle de agentes."""
+    query: str
+    num_results: int = 5
+
+
+class AskResponse(BaseModel):
+    query_id: str
+    citations: list[Citation] = Field(default_factory=list)
+    has_evidence: bool = False
+    tts_text: str = ""        # lo que la voz debe decir si no hay evidencia
+    latency_ms: int = 0
+
+
 class ExploreRequest(BaseModel):
     query: str
     query_id: str = ""

@@ -13,6 +13,7 @@ Arranque:
 
 import asyncio
 import json
+import os
 import time
 import uuid
 from pathlib import Path
@@ -22,8 +23,10 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
-from ar_vr_bridge import mock
-from ar_vr_bridge.contract import SCHEMA_VERSION, Answer, ExploreRequest, ExploreResponse
+from ar_vr_bridge import mock, retrieval
+from ar_vr_bridge.contract import (
+    SCHEMA_VERSION, Answer, AskRequest, AskResponse, ExploreRequest, ExploreResponse,
+)
 
 STATIC = Path(__file__).parent / "static"
 
@@ -44,6 +47,32 @@ async def index() -> FileResponse:
 @app.get("/health")
 async def health() -> dict:
     return {"status": "ok", "schema_version": SCHEMA_VERSION}
+
+
+@app.on_event("startup")
+async def _startup() -> None:
+    """Mantiene caliente el índice: en frío el p95 medido salta a 4,4 s."""
+    if os.environ.get("VS_KEEPWARM", "1") == "1":
+        app.state.keepwarm = asyncio.create_task(retrieval.keep_warm())
+
+
+@app.post("/api/v1/ask", response_model=AskResponse)
+async def ask(request: AskRequest) -> AskResponse:
+    """Camino rápido de la voz: solo consulta el RAG. Presupuesto 1,5 s.
+
+    No lanza hipótesis ni experimento: por eso cabe donde el bucle completo no cabe.
+    Si no hay evidencia por encima del umbral, lo dice en vez de improvisar.
+    """
+    query_id = f"q_{uuid.uuid4().hex[:8]}"
+    citations, has_evidence, latency_ms = await asyncio.to_thread(
+        retrieval.search, request.query, request.num_results,
+    )
+    tts_text = "" if has_evidence else (
+        "No encuentro evidencia suficiente sobre eso en el corpus. "
+        "Puedo buscar algo relacionado si quieres."
+    )
+    return AskResponse(query_id=query_id, citations=citations, has_evidence=has_evidence,
+                       tts_text=tts_text, latency_ms=latency_ms)
 
 
 async def _events(query: str, query_id: str, mode: str):
