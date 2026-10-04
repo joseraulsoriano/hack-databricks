@@ -296,7 +296,8 @@ No las vuelvas a descubrir. Detalle en [`CURACION.md`](CURACION.md) y
   más perdió 201 de 301 estructuras. Nunca colapses `doc_type = structure` ni `prediction`.
 - **943 artículos están en Europe PMC y OpenAlex a la vez**; `retrieval` ya colapsa por DOI.
 - `Δ Tm`, «increase of», «higher than» son **incrementos**, no valores absolutos.
-- Guiones Unicode: `LCC‐ICCG` (U+2010) y `LCC-ICCG` son el mismo nombre. La puerta normaliza.
+- Guiones y comillas Unicode: `LCC‐ICCG` (U+2010) y `PETase’s` (U+2019) son lo mismo que sus
+  equivalentes ASCII. La puerta normaliza ambos; copiar el pasaje por JSON suele convertirlos.
 - El dataset de actividad está **desbalanceado (29% positivos)**: se reporta macro-F1, nunca
   accuracy, y con la partición `cv_split` publicada, no una aleatoria.
 
@@ -305,6 +306,6 @@ No las vuelvas a descubrir. Detalle en [`CURACION.md`](CURACION.md) y
 ## 9. Cómo comprobar que todo esto sigue siendo cierto
 
 ```bash
-uv run python -m unittest discover -s tests -v     # 103 pruebas, sin red ni Databricks
+uv run python -m unittest discover -s tests -v     # 104 pruebas, sin red ni Databricks
 uv run uvicorn ar_vr_bridge.app:app --port 8010    # el puerto que espera el visor
 ```

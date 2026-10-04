@@ -30,6 +30,11 @@ import unicodedata
 # Normalizacion declarada y minima. Cuanto menos toque, mas comprobable a mano es
 # el cotejo: la idea es que una persona pueda leer la frase en el PDF y verla.
 GUIONES = dict.fromkeys(map(ord, "‐‑‒–—−"), "-")
+# Comillas tipograficas: el corpus trae "PETase’s" (U+2019) y un agente que copia el
+# pasaje a traves de JSON manda el apostrofo recto. Es el mismo caso que los guiones y
+# rompia el cotejo igual. Lo encontro el ejemplo de la documentacion al probarlo de verdad.
+COMILLAS = {**dict.fromkeys(map(ord, "‘’‚‛′"), "'"),
+            **dict.fromkeys(map(ord, "“”„‟″"), '"')}
 ESPACIOS = re.compile(r"\s+")
 
 # Un fragmento corto casa con cualquier cosa. Exigimos una frase, no tres palabras.
@@ -46,7 +51,7 @@ def normalizar(texto: str) -> str:
     El guion es el caso real del corpus: `LCC-ICCG` aparece con U+2010 en unos
     articulos y con el guion ASCII en otros (ver docs/EXTRACCION_MUTANTES.md).
     """
-    t = unicodedata.normalize("NFKC", texto or "").translate(GUIONES)
+    t = unicodedata.normalize("NFKC", texto or "").translate(GUIONES).translate(COMILLAS)
     return ESPACIOS.sub(" ", t).strip().casefold()
 
 

@@ -65,6 +65,15 @@ class SpanLiteral(unittest.TestCase):
         r = procedencia.verificar(hip([respaldo(span="85.8 degrees C")]), CORPUS, columnas=COLUMNAS)
         self.assertIn("respaldo[0].span_suficiente", r["fallos"])
 
+    def test_el_apostrofo_tipografico_no_rompe_el_cotejo(self):
+        # El corpus trae "PETase’s" (U+2019); un agente que copia por JSON manda "PETase's".
+        doc = {"europepmc:ap": {"text": "The basis of Kb PETase’s enhanced thermostability was studied.",
+                                "approved_by": "human:revisor", "source": "europepmc"}}
+        span = "The basis of Kb PETase's enhanced thermostability was studied."
+        r = procedencia.verificar(hip([respaldo("europepmc:ap", span)]), {**CORPUS, **doc},
+                                  columnas=COLUMNAS)
+        self.assertNotIn("respaldo[0].span_literal", r["fallos"], procedencia.explicar(r))
+
     def test_el_guion_unicode_no_rompe_el_cotejo(self):
         # LCC-ICCG aparece con U+2010 en unos articulos y con guion ASCII en otros.
         r = procedencia.verificar(hip([respaldo(span=FRASE.replace("LCC-ICCG", "LCC‐ICCG"))]),

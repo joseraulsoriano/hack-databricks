@@ -156,19 +156,37 @@ el mismo input sobre el mismo corpus devuelve el mismo `receipt_hash`.
 
 Criterio completo, lista de comprobaciones y límites en **[`VERIFICABILIDAD.md`](VERIFICABILIDAD.md)**.
 
+**Nunca escribas tú el `evidence_span`.** Pídelo antes a
+[`/api/v1/evidence`](#post-apiv1evidence--pasajes-para-el-agente) y cópialo sin tocar un
+carácter: la puerta lo coteja literal. Este es el bucle de dos pasos que debe seguir el
+orquestador.
+
 ```bash
-curl -X POST http://localhost:8000/api/v1/hypothesis \
-  -H 'Content-Type: application/json' \
+BASE=https://lab-bridge-7474652340191726.aws.databricksapps.com
+
+# PASO 1 — conseguir pasajes reales, de varias fuentes
+curl -s -X POST "$BASE/api/v1/evidence" \
+  -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
+  -d '{"query":"thermostability engineering of PET hydrolases","num_results":8}'
+
+# PASO 2 — mandar la hipótesis con esos pasajes, copiados tal cual
+curl -s -X POST "$BASE/api/v1/hypothesis" \
+  -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
   -d '{
-    "statement": "Las mutaciones que rigidizan el sitio activo suben la Tm de una PET hidrolasa",
-    "prediction": "Las variantes con Tm publicada sobre 80 C conservan actividad medida a 60 C",
+    "statement": "La ingeniería de proteínas aumenta la termoestabilidad de las PET hidrolasas sin perder actividad",
+    "prediction": "Las variantes descritas como termoestables conservan actividad medida a 60 C en pet_activity_ml",
     "variables": ["temperature_c", "activity"],
-    "respaldo": [{"doc_id": "europepmc:111",
-                  "evidence_span": "The engineered variant LCC-ICCG showed a melting temperature of 85.8 degrees C.",
-                  "value": 85.8, "unit": "C"}],
-    "submitted_by": "human:equipo"
+    "respaldo": [
+      {"doc_id": "europepmc:40617831",
+       "evidence_span": "To elucidate the molecular basis of Kb PETase'"'"'s enhanced thermostability, we performed comparative all-atom molecular dynamics (MD) simulations with LCC and Is PETase, representing thermophilic and mesophilic PET hydrolases, respectively."},
+      {"doc_id": "<otro doc_id del paso 1, de OTRA fuente>",
+       "evidence_span": "<su evidence_span, literal>"}
+    ],
+    "submitted_by": "agent:insight"
   }'
 ```
+
+Medido contra la App: paso 1 en **2,6 s** (6 pasajes de 4 fuentes), paso 2 en **1,3 s**.
 
 | Campo de `respaldo` | Notas |
 |---|---|
@@ -196,6 +214,51 @@ curl -X POST http://localhost:8000/api/v1/hypothesis \
 última. Cada comprobación que falla aparece en `failures` por nombre, y su `detail` dice por qué
 —incluido el caso en que la frase existe pero en **otro** documento, que es el error de
 atribución típico.
+
+### Del veredicto al visor y a las gafas
+
+La puerta **no dibuja nada**: devuelve un recibo. Quien lo lleva a la web y a las Quest es el
+orquestador, emitiendo los eventos de `ar_vr_bridge/contract.py` desde
+`agent_lab/runtime.py::stream_discovery` — en cuanto ese archivo exista, `mode: "live"` deja de
+caer al simulador **sin tocar el visor ni el puente**.
+
+El recibo se traduce así, campo a campo:
+
+| Del recibo / la hipótesis | Evento al visor | Por qué importa |
+|---|---|---|
+| `statement` | `node` con `type: "hypothesis"`, `agent_generated: true` | El visor dibuja con borde discontinuo lo escrito por un modelo, y **sólo eso** se somete a revisión humana |
+| `respaldo[].doc_id` | `citations` + `citation_ids` en el nodo | El panel enseña la fuente con su `url` y su `snippet` |
+| `checks[]` | `validation.checks` | Cada fila lleva `value` y `threshold`: se muestra el número, no una aserción |
+| `verdict` | `validation.verdict` (`PASS`/`WARN`/`FAIL`) | `RECHAZADA` → `FAIL`; con avisos → `WARN` |
+| `receipt_hash` | en `node.props` | Permite recalcular el veredicto y comparar |
+
+```python
+# agent_lab/runtime.py — lo implementa el equipo del orquestador
+async def stream_discovery(query: str, query_id: str):
+    yield StageEvent(query_id=query_id, stage="hypothesizing", progress=0.45,
+                     message="Formulando hipótesis")
+    yield CitationsEvent(query_id=query_id, citations=citas)      # de /api/v1/evidence
+    yield NodeEvent(query_id=query_id, node=Node(
+        id="h1", type="hypothesis", label=recibo_statement[:48],
+        detail=statement, layer=LAYER["hypothesis"],
+        agent_generated=True,                                     # <- lo que el gate revisa
+        citation_ids=[c.id for c in citas],
+        props=[{"receipt_hash": recibo["receipt_hash"]}]))
+    yield ValidationEvent(query_id=query_id, validation=Validation(
+        verdict="WARN" if recibo["warnings"] else "PASS",
+        checks=[Check(**c) for c in recibo["checks"]]))
+    yield DoneEvent(query_id=query_id)                             # la latencia la mide el puente
+```
+
+Una hipótesis `RECHAZADA` **no se emite como nodo**: se corrige y se reenvía. El recibo dice en
+`failures` qué comprobación falló y en `detail` por qué —incluido en qué otro documento sí está
+la frase—, así que el agente puede arreglarla sin adivinar.
+
+Del lado del visor esto ya está resuelto: `gate/bridge.py` consume estos eventos, convierte los
+nodos `agent_generated` en candidatos de revisión y devuelve la decisión humana a
+`POST /api/v1/approve/{approval_id}`.
+
+---
 
 Si el warehouse no responde, la respuesta es `RECHAZADA` con `corpus_inaccesible`: sin poder
 cotejar, nada se admite a ciegas.
