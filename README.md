@@ -127,6 +127,7 @@ docs/                 Arranque por persona:
   VERIFICABILIDAD.md    cómo se justifica cada afirmación y qué admite el lab
   CONTEXTO_AGENTE.md    resumen medido del que se alimenta el orquestador
   DATOS_POR_ENDPOINT.md qué información saca el agente de cada endpoint, campo a campo
+  FLUJO.md              de las gafas a los agentes, al RAG y de vuelta con la aprobación
 
 ```
 

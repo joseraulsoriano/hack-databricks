@@ -23,7 +23,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
-from ar_vr_bridge import consultas, evidencia, mock, redaccion, registro, retrieval
+from ar_vr_bridge import aprobacion, consultas, evidencia, mock, redaccion, registro, retrieval
 from ar_vr_bridge.contract import (
     SCHEMA_VERSION, Answer, AskRequest, AskResponse, Check, ExploreRequest, ExploreResponse,
     DocumentResponse, EvidenceRequest, EvidenceResponse, HypothesisReceipt,
@@ -38,7 +38,6 @@ app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], all
 app.mount("/static", StaticFiles(directory=STATIC), name="static")
 
 # Aprobaciones pendientes: approval_id -> Future que resuelve con la decisión humana.
-_pending_approvals: dict[str, asyncio.Future] = {}
 
 
 @app.get("/")
@@ -300,11 +299,10 @@ async def ws_explore(ws: WebSocket) -> None:
             raw = await ws.receive_text()
             payload = json.loads(raw)
 
-            # Respuesta a una aprobación pendiente, no una pregunta nueva.
+            # Respuesta a una aprobación pendiente, no una pregunta nueva. La
+            # decisión no se queda aquí: vuelve al orquestador, que es quien espera.
             if approval_id := payload.get("approval_id"):
-                if fut := _pending_approvals.get(approval_id):
-                    if not fut.done():
-                        fut.set_result(payload.get("decision", "reject"))
+                aprobacion.responder(approval_id, payload.get("decision", "reject"))
                 continue
 
             request = ExploreRequest(**payload)
@@ -341,26 +339,21 @@ async def explore(request: ExploreRequest) -> ExploreResponse:
 
 @app.post("/api/v1/approve/{approval_id}")
 async def approve(approval_id: str, decision: str = "approve") -> dict:
-    """El visor responde a una puerta de aprobación del Safety Agent."""
-    fut = _pending_approvals.get(approval_id)
-    if fut is None:
+    """El visor responde a una puerta de aprobación.
+
+    La decisión se entrega a quien la está esperando —el orquestador— para que
+    cambie su plan. Si nadie espera, se dice: no se finge que quedó registrada.
+    """
+    if not aprobacion.responder(approval_id, decision):
         return {"status": "unknown_approval", "approval_id": approval_id}
     registro.anotar("approval", f"decisión humana: {decision}",
                     session_id=approval_id, from_agent="human:visor", to_agent="safety_agent",
                     flow="safety", weight=1.0 if decision == "approve" else 0.0,
                     payload={"decision": decision, "approval_id": approval_id})
-    if not fut.done():
-        fut.set_result(decision)
     return {"status": "ok", "approval_id": approval_id, "decision": decision}
 
 
-async def request_approval(approval_id: str, timeout_s: float = 120.0) -> str:
-    """Lo llama el Safety Agent: bloquea hasta que una persona responda o venza el plazo."""
-    fut = asyncio.get_running_loop().create_future()
-    _pending_approvals[approval_id] = fut
-    try:
-        return await asyncio.wait_for(fut, timeout_s)
-    except TimeoutError:
-        return "timeout"
-    finally:
-        _pending_approvals.pop(approval_id, None)
+# La puerta de aprobación vive en `ar_vr_bridge.aprobacion` para que
+# `agent_lab/runtime.py` pueda importarla sin ciclo: es `app` quien importa
+# `runtime`, no al revés. Se mantiene este alias para quien ya la usaba.
+request_approval = aprobacion.pedir

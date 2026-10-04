@@ -29,26 +29,33 @@ FALLBACK_CITATIONS = [
 ]
 
 
-def _sample_citations() -> list[Citation]:
-    """Intenta citas reales del corpus; si Databricks no responde, usa las fijas."""
+def _sample_citations(query: str = "") -> list[Citation]:
+    """Citas reales del corpus **curado**, elegidas con la pregunta. Si no, las fijas.
+
+    Dos cosas que estaban mal y se arreglaron juntas:
+
+    1. **Leía de `documents_staging`**, que no está curado: el visor podía enseñar
+       un documento que nadie aprobó, justo el control que declara `ALCANCE.md`.
+       Ahora lee de `documents_curated`, que es lo único citable.
+    2. **Ignoraba la pregunta**: un SQL fijo devolvía siempre los tres documentos
+       más recientes con «PET» en el título, así que cinco consultas distintas
+       —incluida una de cardiología— recibían las mismas citas.
+
+    Ahora la evidencia es REAL: la elige el indice vectorial, con su score y su
+    umbral, y pasa por el filtro de curacion. Lo que sigue siendo guion es el
+    razonamiento —hipotesis, experimento, veredicto—, que necesita al orquestador;
+    el evento `stage` del puente lo avisa.
+    """
     try:
-        from data_pipeline.databricks_io import Databricks
-        rows = Databricks().sql("""
-            SELECT doc_id, title, year, doi, url, source, substr(abstract, 1, 180)
-            FROM workspace.lab.documents_staging
-            WHERE length(abstract) > 200 AND title ILIKE '%PET%'
-            ORDER BY year DESC NULLS LAST LIMIT 3
-        """)
+        from ar_vr_bridge import retrieval
+        citas, hay_evidencia, _ = retrieval.search(query, 3, con_snippet=True)
     except Exception:
         return FALLBACK_CITATIONS
-    if not rows:
-        return FALLBACK_CITATIONS
-    return [
-        Citation(id=f"c{i+1}", doc_id=r[0], title=r[1] or "", year=int(r[2]) if r[2] else None,
-                 doi=r[3] or "", url=r[4] or "", source=r[5] or "", snippet=r[6] or "",
-                 score=round(0.92 - i * 0.04, 2))
-        for i, r in enumerate(rows)
-    ]
+    if not citas:
+        return []
+    # Sin evidencia por encima del umbral no se cita nada. Es la misma regla que
+    # /api/v1/ask: una pregunta fuera del dominio no debe recibir fuentes de PET.
+    return citas if hay_evidencia else []
 
 
 def _node(nid: str, ntype: str, label: str, detail: str = "", confidence: float = 1.0,
@@ -64,7 +71,7 @@ async def stream(query: str, query_id: str, speed: float = 1.0) -> AsyncIterator
     async def pause(seconds: float) -> None:
         await asyncio.sleep(seconds * speed)
 
-    citations = _sample_citations()
+    citations = _sample_citations(query)
     cids = [c.id for c in citations]
 
     yield StageEvent(query_id=query_id, stage="received", message="Pregunta recibida", progress=0.05)
@@ -93,8 +100,12 @@ async def stream(query: str, query_id: str, speed: float = 1.0) -> AsyncIterator
     ]
     for vid, label, detail, conf in variables:
         yield NodeEvent(query_id=query_id, node=_node(vid, "variable", label, detail, conf, citation_ids=cids[:2]))
-        yield EdgeEvent(query_id=query_id, edge=Edge(source=f"e{random.randint(1, len(citations))}", target=vid,
-                                                     relation="supports", weight=conf, citation_ids=cids[:1]))
+        # Sin citas no hay nodo de evidencia del que colgar la arista: una pregunta
+        # fuera del dominio no devuelve fuentes, y `randint(1, 0)` reventaba el stream.
+        if citations:
+            yield EdgeEvent(query_id=query_id, edge=Edge(
+                source=f"e{random.randint(1, len(citations))}", target=vid,
+                relation="supports", weight=conf, citation_ids=cids[:1]))
         await pause(0.4)
 
     yield NodeEvent(query_id=query_id, node=_node(

@@ -9,6 +9,8 @@ se midió, y para que no prometas al visor algo que el backend no puede sostener
 
 ---
 
+El recorrido completo salto a salto está en **[`FLUJO.md`](FLUJO.md)**.
+
 ## 0. Reparto de trabajo — quién entrega qué
 
 | Pieza | Quién | Estado |

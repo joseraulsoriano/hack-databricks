@@ -122,8 +122,17 @@ class EventosDelVisor(unittest.TestCase):
     def setUp(self):
         from fastapi.testclient import TestClient
 
+        from ar_vr_bridge import mock
         from ar_vr_bridge.app import app
+        # El simulador ahora consulta el indice real; aqui se sustituye para que la
+        # prueba siga sin red, como el resto de la suite.
+        self.orig_citas = mock._sample_citations
+        mock._sample_citations = lambda q="": []
         self.cliente = TestClient(app)
+
+    def tearDown(self):
+        from ar_vr_bridge import mock
+        mock._sample_citations = self.orig_citas
 
     def _correr(self, mode):
         with self.cliente.websocket_connect("/ws/explore") as ws:
