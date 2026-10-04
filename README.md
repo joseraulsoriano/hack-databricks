@@ -94,6 +94,15 @@ omnigent login dbc-19f58290-50fb.cloud.databricks.com/omnigent
 
 ---
 
+## Pruebas
+
+```bash
+uv run python -m unittest discover -s tests -v    # 39 pruebas, sin red ni Databricks
+```
+
+Cada caso fija un error real que se encontró al revisar los datos (la trampa del DOI en PDB, un
+incremento leído como valor absoluto, un polímero confundido con una enzima…). Si vuelve, falla.
+
 ## Estructura
 
 ```
