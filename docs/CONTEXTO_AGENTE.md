@@ -169,6 +169,8 @@ fuente de verdad.
 | `POST` | `/api/v1/explore` | El mismo bucle, de una pieza |
 | `POST` | `/api/v1/ask` | Camino rápido de voz: solo RAG. Sin evidencia, `citations: []` |
 | `GET` | `/api/v1/queries` | Qué se ha preguntado y qué corridas se cayeron |
+| `POST` | `/api/v1/evidence` | **Pasajes listos para `evidence_span`.** El paso previo obligado a una hipótesis |
+| `GET` | `/api/v1/documents/{doc_id}` | El documento curado entero, por secciones |
 | `POST` | `/api/v1/approve/{approval_id}` | Respuesta a una aprobación humana |
 
 ### Cómo se alimenta una hipótesis
@@ -190,6 +192,15 @@ POST /api/v1/hypothesis
 Devuelve `verdict` (`ADMITIDA` / `ADMITIDA_CON_AVISOS` / `RECHAZADA`), los `checks` con su valor
 y umbral, y un `receipt_hash` reproducible. Criterio completo en
 [`VERIFICABILIDAD.md`](VERIFICABILIDAD.md).
+
+**El bucle correcto:** `POST /api/v1/evidence` → elige 3-5 pasajes de **fuentes distintas** →
+`POST /api/v1/hypothesis` con esos `doc_id` y `evidence_span` *sin tocar un carácter* → recibo.
+Nunca escribas tú la frase: cópiala del pasaje.
+
+**Ojo con la pertinencia.** La puerta prueba trazabilidad, **no** que el documento sostenga la
+hipótesis: una frase real de un documento irrelevante sale `ADMITIDA`. Quien filtra por
+pertinencia es el RAG, con su score. Por eso el respaldo se toma de `/api/v1/evidence` y no
+buscando por palabra clave.
 
 **Lo que hace fallar a un agente, por orden de frecuencia esperada:**
 
@@ -294,6 +305,6 @@ No las vuelvas a descubrir. Detalle en [`CURACION.md`](CURACION.md) y
 ## 9. Cómo comprobar que todo esto sigue siendo cierto
 
 ```bash
-uv run python -m unittest discover -s tests -v     # 91 pruebas, sin red ni Databricks
+uv run python -m unittest discover -s tests -v     # 103 pruebas, sin red ni Databricks
 uv run uvicorn ar_vr_bridge.app:app --port 8010    # el puerto que espera el visor
 ```

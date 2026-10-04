@@ -30,6 +30,8 @@ transporte; aquel, la forma de los datos.
 | `POST` | `/api/v1/hypothesis` | **Puerta de entrada.** Admite o rechaza una hipótesis por su procedencia | ✅ |
 | `POST` | `/api/v1/ask` | **Camino rápido para la voz.** Solo RAG, < 1,5 s | ✅ |
 | `GET` | `/api/v1/queries` | Las preguntas recibidas y su resultado | ✅ |
+| `POST` | `/api/v1/evidence` | **Pasajes curados para construir una hipótesis** | ✅ |
+| `GET` | `/api/v1/documents/{doc_id}` | El documento curado entero, por secciones | ✅ |
 
 ---
 
@@ -303,3 +305,38 @@ de configuración; el cliente no se entera.**
 
 El visor debe tolerar que falte un evento: si llega un `edge` cuyos nodos no existen, se ignora
 en vez de romper el render.
+
+
+---
+
+## `POST /api/v1/evidence` — pasajes para el agente
+
+`/api/v1/ask` devuelve `doc_id` y título pero **no el texto**, y la puerta de procedencia exige
+el `evidence_span` *literal*. Sin pasajes, el agente tendría que inventarse la frase y la puerta
+se la rechazaría: construir una hipótesis era imposible por construcción. Esto lo resuelve.
+
+```bash
+curl -X POST "$BASE/api/v1/evidence" -H "Authorization: Bearer $TOKEN" \
+  -H 'Content-Type: application/json' \
+  -d '{"query":"thermostability engineering of PET hydrolases","num_results":8}'
+```
+
+| Campo | Notas |
+|---|---|
+| `query` | 1-500 caracteres |
+| `num_results` | 1-30, por defecto 8 |
+| `doc_id` | Opcional: busca **dentro** de ese documento — «mira en este paper esta parte» |
+| `section` | Opcional: filtra por sección (`Introduction`, `Methods`, `Results`…) |
+
+Devuelve `passages[]` con `chunk_id`, `doc_id`, `section`, `url` y **`evidence_span`**, que se
+pega *tal cual* en una hipótesis. Como máximo 3 pasajes por documento, para que el respaldo
+venga de varias fuentes y no de una sola.
+
+No está en el camino de voz, así que puede pagar la consulta SQL que trae el texto. Tampoco
+escribe en `queries`: no es una pregunta del laboratorio.
+
+## `GET /api/v1/documents/{doc_id}` — el documento entero
+
+Todos los trozos curados de un documento, con sus secciones. **No hay PDF en el corpus**; esto
+es el texto que sí hay (707 documentos traen texto completo). Sirve para que una persona lo lea
+completo en vez de fiarse de un fragmento. `404` si el documento no está curado.

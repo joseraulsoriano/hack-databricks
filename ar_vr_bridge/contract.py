@@ -161,6 +161,55 @@ class AskResponse(BaseModel):
     latency_ms: int = 0
 
 
+# ---------------------------------------------------------------------------
+# Pasajes para el agente. Lo que devuelve `evidence_span` se pega TAL CUAL en
+# una hipótesis: la puerta lo coteja literal (ver docs/VERIFICABILIDAD.md).
+# ---------------------------------------------------------------------------
+
+class EvidenceRequest(BaseModel):
+    query: str = Field(min_length=1, max_length=500)
+    num_results: int = Field(default=8, ge=1, le=30)
+    doc_id: str = ""      # busca DENTRO de un documento: «mira en este paper»
+    section: str = ""     # filtra por sección (Introduction, Methods, …)
+
+
+class Passage(BaseModel):
+    chunk_id: str
+    doc_id: str
+    source: str = ""
+    title: str = ""
+    year: int | None = None
+    doi: str = ""
+    url: str = ""
+    section: str = ""
+    evidence_span: str    # literal; se pega sin tocar un carácter
+    overlap: int = 0      # términos de la consulta presentes en el pasaje
+
+
+class EvidenceResponse(BaseModel):
+    schema_version: str = SCHEMA_VERSION
+    query: str = ""
+    count: int = 0
+    doc_ids: list[str] = Field(default_factory=list)   # fuentes distintas halladas
+    passages: list[Passage] = Field(default_factory=list)
+    latency_ms: int = 0
+
+
+class DocumentResponse(BaseModel):
+    """Un documento curado entero: lo más parecido a abrir el PDF que hay aquí."""
+    schema_version: str = SCHEMA_VERSION
+    doc_id: str = ""
+    source: str = ""
+    title: str = ""
+    year: int | None = None
+    doi: str = ""
+    url: str = ""
+    chunks: int = 0
+    sections: list[str] = Field(default_factory=list)
+    passages: list[Passage] = Field(default_factory=list)
+    latency_ms: int = 0
+
+
 class ExploreRequest(BaseModel):
     query: str
     query_id: str = ""

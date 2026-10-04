@@ -23,10 +23,11 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
-from ar_vr_bridge import consultas, mock, redaccion, registro, retrieval
+from ar_vr_bridge import consultas, evidencia, mock, redaccion, registro, retrieval
 from ar_vr_bridge.contract import (
     SCHEMA_VERSION, Answer, AskRequest, AskResponse, Check, ExploreRequest, ExploreResponse,
-    HypothesisReceipt, HypothesisRequest, StageEvent,
+    DocumentResponse, EvidenceRequest, EvidenceResponse, HypothesisReceipt,
+    HypothesisRequest, Passage, StageEvent,
 )
 
 STATIC = Path(__file__).parent / "static"
@@ -96,6 +97,58 @@ async def ask(request: AskRequest) -> AskResponse:
                     citation_doc_ids=[c.doc_id for c in citations])
     return AskResponse(query_id=query_id, answer=answer, citations=citations,
                        has_evidence=has_evidence, tts_text=tts_text, latency_ms=latency_ms)
+
+
+@app.post("/api/v1/evidence", response_model=EvidenceResponse)
+async def evidencia_endpoint(request: EvidenceRequest) -> EvidenceResponse:
+    """Pasajes curados listos para pegar como `evidence_span` en una hipótesis.
+
+    Sin `doc_id`, el índice vectorial elige primero qué documentos son pertinentes
+    y de ellos se extraen los trozos: así el respaldo viene de varias fuentes, que
+    es lo que hace útil una hipótesis. Con `doc_id`, busca **dentro** de ese
+    documento — el equivalente a «mira en este paper esta parte».
+
+    No está en el camino de voz, así que puede pagar la consulta SQL que trae el
+    texto. Tampoco escribe en `queries`: no es una pregunta del laboratorio.
+    """
+    inicio = time.monotonic()
+    try:
+        doc_ids_rag = None
+        if not request.doc_id:
+            # El RAG decide la pertinencia; el solape de términos solo ordena dentro.
+            citas, _, _ = await asyncio.to_thread(
+                retrieval.search, request.query, max(request.num_results, 8))
+            doc_ids_rag = [c.doc_id for c in citas]
+        pasajes = await asyncio.to_thread(
+            evidencia.buscar, request.query, request.num_results,
+            request.doc_id, request.section, doc_ids_rag)
+    except Exception as exc:
+        raise HTTPException(status_code=503, detail=f"corpus no disponible: {exc}")
+
+    return EvidenceResponse(
+        query=request.query, count=len(pasajes),
+        doc_ids=sorted({p["doc_id"] for p in pasajes}),
+        passages=[Passage(**p) for p in pasajes],
+        latency_ms=int((time.monotonic() - inicio) * 1000))
+
+
+@app.get("/api/v1/documents/{doc_id}", response_model=DocumentResponse)
+async def documento_endpoint(doc_id: str) -> DocumentResponse:
+    """El documento curado entero, trozo a trozo y con sus secciones.
+
+    Para que una persona —o el agente— lo lea completo en vez de fiarse de un
+    fragmento. No hay PDF en el corpus; esto es el texto que sí hay.
+    """
+    inicio = time.monotonic()
+    try:
+        doc = await asyncio.to_thread(evidencia.documento, doc_id)
+    except Exception as exc:
+        raise HTTPException(status_code=503, detail=f"corpus no disponible: {exc}")
+    if not doc:
+        raise HTTPException(status_code=404, detail=f"{doc_id} no está en documents_curated")
+    pasajes = doc.pop("passages")
+    return DocumentResponse(**doc, passages=[Passage(**p) for p in pasajes],
+                            latency_ms=int((time.monotonic() - inicio) * 1000))
 
 
 @app.get("/api/v1/queries")
