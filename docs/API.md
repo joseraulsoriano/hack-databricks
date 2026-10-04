@@ -3,6 +3,7 @@
 Referencia de los endpoints que consumen el visor WebXR (Meta Quest 2), el cliente web y
 cualquier otro cliente.
 
+**Base real (Databricks App):** `https://lab-bridge-7474652340191726.aws.databricksapps.com` — HTTPS, requiere `Authorization: Bearer <token>`
 **Base en desarrollo:** `http://localhost:8000`
 **Puerto que espera el visor del equipo:** `:8010` (su Gate API ocupa el `:8000`)
 **Base en gafas:** una URL HTTPS (túnel o Databricks App). WebXR exige contexto seguro.

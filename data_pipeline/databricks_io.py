@@ -5,8 +5,9 @@ import re
 import time
 from pathlib import Path
 
-from databricks.sdk import WorkspaceClient
 from databricks.sdk.service.sql import StatementParameterListItem, StatementState
+
+from data_pipeline import auth
 
 CATALOG_SCHEMA = "workspace.lab"
 VOLUME_ROOT = "/Volumes/workspace/lab/raw"
@@ -19,7 +20,7 @@ STAGING_COLUMNS = """
 
 class Databricks:
     def __init__(self, profile: str | None = None, warehouse_id: str | None = None):
-        self.w = WorkspaceClient(profile=profile or os.environ.get("DATABRICKS_CONFIG_PROFILE", "hack"))
+        self.w = auth.workspace(profile)
         self.warehouse_id = warehouse_id or os.environ.get("DATABRICKS_WAREHOUSE_ID") or self._first_warehouse()
 
     def _first_warehouse(self) -> str:

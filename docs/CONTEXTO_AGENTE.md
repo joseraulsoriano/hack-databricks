@@ -126,6 +126,36 @@ correcto.
 
 ## 4. Endpoints — qué puede llamar el orquestador
 
+### URL real (Databricks App)
+
+```
+https://lab-bridge-7474652340191726.aws.databricksapps.com
+```
+
+El puente está desplegado como **Databricks App** (`lab-bridge`): URL HTTPS estable, corre al
+lado de los datos y no depende de ningún portátil ni de la Wi-Fi. Medido desde la App:
+**533 ms** en `/api/v1/ask`.
+
+**Requiere `Authorization: Bearer <token>`.** Sin cabecera, Databricks responde `302` hacia
+OAuth. El token vive en el servidor de quien llama —la gate—, **nunca en el bundle del
+navegador**, que es justo lo que pedía el contrato del front.
+
+```bash
+curl -H "Authorization: Bearer $TOKEN" https://lab-bridge-7474652340191726.aws.databricksapps.com/health
+```
+
+El service principal de la app es `12912d7d-4987-459b-b4e9-b804a03c4079`, con `USE CATALOG`,
+`USE SCHEMA` y `SELECT` sobre `workspace.lab`, más `MODIFY` sobre `queries` y `research_record`.
+
+Para desplegar un cambio:
+
+```bash
+databricks sync . "/Workspace/Users/<tu-usuario>/lab-bridge" --full --profile hack
+databricks apps deploy lab-bridge --source-code-path "/Workspace/Users/<tu-usuario>/lab-bridge" --profile hack
+```
+
+
+
 Base en desarrollo: `http://localhost:8000`. **El visor del equipo espera este puente en
 `:8010`** (`BRIDGE_URL` en `gate/bridge.py`), porque su Gate API ocupa el `:8000`.
 

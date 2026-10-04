@@ -1,0 +1,8 @@
+# Dependencias de la Databricks App. Solo lo que necesita el puente en runtime:
+# los modelos de algorithms/ no se cargan aqui.
+databricks-sdk>=0.146.0
+fastapi>=0.142.2
+uvicorn>=0.54.0
+pydantic>=2.13.5
+httpx>=0.28.1
+websockets>=17.2

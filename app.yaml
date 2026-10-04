@@ -1,0 +1,25 @@
+# Databricks App: el puente AR/VR servido desde el workspace, con URL HTTPS estable.
+#
+# Por que una App y no un portatil: la IP de una Wi-Fi cambia, no tiene TLS y se
+# apaga al cerrar la tapa. Aqui la URL no cambia, va por HTTPS y corre al lado de
+# los datos, asi que la latencia contra el indice y el warehouse es menor.
+#
+# La plataforma inyecta el puerto en DATABRICKS_APP_PORT y las credenciales del
+# service principal en el entorno; data_pipeline/auth.py las detecta solo.
+command:
+  - uvicorn
+  - ar_vr_bridge.app:app
+  - --host
+  - 0.0.0.0
+  - --port
+  - $DATABRICKS_APP_PORT
+
+env:
+  - name: VS_INDEX
+    value: workspace.lab.rag_v0_idx      # cambiar a rag_v1_idx cuando este ready
+  - name: QUERIES_LOG
+    value: "1"
+  - name: RESEARCH_RECORD
+    value: "1"
+  - name: VS_KEEPWARM
+    value: "1"

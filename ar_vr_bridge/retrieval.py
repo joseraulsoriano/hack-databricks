@@ -15,6 +15,7 @@ import time
 from databricks.sdk import WorkspaceClient
 
 from ar_vr_bridge.contract import Citation
+from data_pipeline import auth
 
 INDEX = os.environ.get("VS_INDEX", "workspace.lab.rag_v0_idx")
 COLUMNS = ["chunk_id", "doc_id", "title", "year", "doi", "url", "source"]
@@ -34,7 +35,7 @@ _por_trozos: bool | None = None   # None = todavia no se consulto
 def _workspace() -> WorkspaceClient:
     global _client
     if _client is None:
-        _client = WorkspaceClient(profile=os.environ.get("DATABRICKS_CONFIG_PROFILE", "hack"))
+        _client = auth.workspace()
     return _client
 
 
