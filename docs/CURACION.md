@@ -22,6 +22,9 @@ databricks auth login --host https://dbc-19f58290-50fb.cloud.databricks.com --pr
 databricks current-user me --profile hack       # verifica
 ```
 
+Tu usuario (`cameron.malfoy@gmail.com`) ya está dado de alta con permisos de lectura y escritura
+sobre `workspace.lab`. Acepta la invitación del correo o entra directamente al workspace con esa cuenta.
+
 - **Workspace:** `https://dbc-19f58290-50fb.cloud.databricks.com`
 - **Catálogo.esquema:** `workspace.lab` (el catálogo `hackathon` no existe en este workspace)
 - **Volume:** `/Volumes/workspace/lab/raw` — payloads originales, inmutables
@@ -45,13 +48,15 @@ uv run python -c "from data_pipeline.databricks_io import Databricks; print(Data
 
 `workspace.lab.documents_staging` — **sin limpiar, ese es tu trabajo**.
 
+Total: **4 945 filas**.
+
 | source | Filas | Qué trae |
 |---|---|---|
-| `europepmc` | ~1 126 | Artículos biomédicos. Los de acceso abierto traen **texto completo con tablas** en `full_text` |
-| `openalex` | ~3 299 | Artículos, preprints y **tesis** (`doc_type='thesis'`), con conteo de citas |
+| `europepmc` | 1 126 | 1 026 artículos y 100 preprints. **712 traen texto completo con tablas** en `full_text` |
+| `openalex` | 3 299 | 2 692 artículos, 402 preprints, **102 tesis** (`doc_type='thesis'`) y 103 datasets, con conteo de citas |
 | `pdb` | 301 | Estructuras cristalinas. `metadata.mutations` trae **las mutaciones declaradas**, más secuencia y UniProt |
-| `alphafold` | ~79 | Predicciones de estructura por accesión UniProt, con pLDDT |
-| `zenodo` | ~25 | Datasets, incluido el de actividad que ya está procesado (ver 2.2) |
+| `alphafold` | 120 | Predicciones de estructura por accesión UniProt, con pLDDT |
+| `zenodo` | 99 | 26 datasets, 61 publicaciones y 10 de software. Incluye el de actividad ya procesado (ver 2.2) |
 
 Columnas: `doc_id, source, source_id, doc_type, title, authors, year, doi, url, license,
 is_open_access, abstract, full_text, raw_path, metadata, content_hash, query, fetched_by, fetched_at`.
@@ -97,9 +102,10 @@ con **1 679 estructuras AF2 en PDB**, por si quieres features 3D o usarlas en el
 
 Problemas reales que tiene el corpus, verificados:
 
-1. **Duplicados entre fuentes.** El mismo artículo está en Europe PMC y OpenAlex. Deduplica por
-   `doi` (ya viene normalizado: minúsculas, sin prefijo). **Prefiere la fila de Europe PMC cuando
-   tenga `full_text`.** Para copias exactas sin DOI, usa `content_hash`.
+1. **Duplicados entre fuentes.** Medido sobre las 4 945 filas: hay **3 352 DOIs distintos** y
+   **943 DOIs que aparecen en Europe PMC y OpenAlex a la vez**. Deduplica por `doi` (ya viene
+   normalizado: minúsculas, sin prefijo) y **prefiere la fila de Europe PMC cuando tenga
+   `full_text`**. Quedan **387 filas sin DOI**: para esas, usa `content_hash` o el título.
 2. **Ruido temático.** La consulta fue amplia a propósito (`PETase OR "PET hydrolase" OR
    "poly(ethylene terephthalate) hydrolase"`): trae cutinasas, MHETasas y reciclaje en general.
    Filtra o etiqueta; no borres sin registrar el criterio.
@@ -108,14 +114,13 @@ Problemas reales que tiene el corpus, verificados:
    de Tm y actividad de las variantes.
 4. **Licencias.** Conserva `license`. No todo el acceso abierto de Europe PMC es CC-BY, y el
    informe final tiene que poder declararlo.
-5. **Sin texto.** OpenAlex solo da resumen. Una fila con resumen vacío y sin texto completo no
-   aporta al RAG: descártala o márcala.
+5. **Sin texto aprovechable.** **638 filas** tienen el resumen por debajo de 50 caracteres y
+   ningún texto completo. No aportan al RAG: descártalas o márcalas.
 
 ### Paso B — Crear el índice de AI Search
 
-```bash
-databricks vector-search-endpoints create-endpoint lab-vs STANDARD --profile hack   # tarda, lánzalo primero
-```
+El endpoint **`lab-vs` ya está creado y ONLINE** (id `f751f1e7-4b87-4b82-a43c-919e2048fcb9`).
+No tienes que crearlo: solo el índice encima.
 
 Índice Delta Sync sobre `documents_curated`, con embeddings gestionados:
 
@@ -131,6 +136,9 @@ ug mcp add --agents claude --names "vector-search:workspace.lab,uc-functions:wor
 ```
 
 ### Paso C — Tus algoritmos sobre `pet_activity_ml`
+
+**Escribe tu código en `algorithms/`**, no dentro de `data_pipeline/` (eso es ingesta).
+El pipeline de curación del paso A va en `data_pipeline/curation/`.
 
 Lo que ya puedes correr sin esperar a nadie:
 
@@ -149,6 +157,9 @@ Lo que ya puedes correr sin esperar a nadie:
   no accuracy. Un modelo que diga siempre "no activa" acierta el 71%.
 - **Los vacíos ya no existen.** En el CSV original, celda vacía significaba *condición no medida*,
   no actividad cero. Ya las excluí: las 1 570 filas son mediciones reales. No las rellenes con 0.
+- **Fija el tipo de tarea a mano.** `activity` tiene pocos valores distintos y muchos ceros, así
+  que un detector automático de tipo puede confundirla con una variable categórica. Usa
+  `activity` para regresión e `is_active` para clasificación, de forma explícita.
 - **Reporta media ± σ en validación cruzada**, con early stopping, y declara el gap train/val.
   El brief puntúa el rigor (15%), y el Safety Agent del lab usa justo esas métricas como umbral.
 
@@ -179,8 +190,9 @@ El agente la llena con citas obligatorias; tú verificas una muestra y marcas `v
 
 ## 5. Referencias
 
-- Brief del reto: `docs/` (PDF original del hackathon)
+- Brief del reto: lo tiene el equipo fuera del repo; pídelo si lo necesitas
 - Conectores y esquema: `data_pipeline/README.md`
+- Alcance y límites del proyecto: `docs/ALCANCE.md`
 - Dataset de actividad: Zenodo [10.5281/zenodo.15417757](https://doi.org/10.5281/zenodo.15417757), CC-BY-4.0
 - Enzima de referencia: IsPETase, UniProt `A0A0K8P6T7`, estructura PDB `5XJH` (1.54 Å)
 - AI Search: usa la skill `databricks` ya instalada en el repo (`.claude/settings.json`)

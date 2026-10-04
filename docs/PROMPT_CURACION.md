@@ -17,8 +17,10 @@ CONTEXTO
 - Nicho: enzimas que degradan PET (PETasa). Pregunta: qué propiedades de una PET hidrolasa
   predicen su actividad a 60 °C.
 - Ya cargado por mi compañero:
-  * documents_staging: ~4 900 documentos sin limpiar (Europe PMC con texto completo,
-    OpenAlex incl. tesis, PDB con mutaciones declaradas, AlphaFold, Zenodo)
+  * documents_staging: 4 945 documentos sin limpiar (Europe PMC 1 126 con 712 de
+    texto completo, OpenAlex 3 299 incl. 102 tesis, PDB 301 con mutaciones
+    declaradas, AlphaFold 120, Zenodo 99). Medido: 943 DOIs duplicados entre
+    Europe PMC y OpenAlex, 387 filas sin DOI, 638 sin texto aprovechable.
   * enzyme_features (213), pet_activity (1 570), vista pet_activity_ml  <- listas para modelar
   * documents_curated, mutant_stability, research_record: creadas y vacías
 
@@ -36,11 +38,12 @@ TAREAS, en este orden
      ~15% de solape, SIN partir tablas (ahí están los valores de Tm y actividad)
    - conserva license, doi, url, year y section en cada chunk
    - clave primaria: chunk_id = '<doc_id>#<n>'
-   Deja el pipeline como script reproducible, no como notebook suelto.
+   Deja el pipeline como script reproducible en data_pipeline/curation/, no como
+   notebook suelto. Tus modelos van en algorithms/ (ver algorithms/README.md).
 
 3. Crea el índice de AI Search (Delta Sync) sobre documents_curated:
-   endpoint lab-vs, texto en 'text', clave chunk_id, embeddings databricks-gte-large-en.
-   El endpoint tarda en aprovisionarse: lánzalo lo primero, en paralelo con el paso 2.
+   texto en 'text', clave chunk_id, embeddings databricks-gte-large-en.
+   El endpoint lab-vs YA existe y esta ONLINE: solo falta el indice encima.
 
 4. Modelos sobre workspace.lab.pet_activity_ml (1 570 filas, 33 features, objetivo
    'activity' en regresión o 'is_active' en clasificación):

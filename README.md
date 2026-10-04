@@ -61,10 +61,11 @@ Zenodo        ─┘                     │                          índice AI
 | Pieza | Estado |
 |---|---|
 | Esquema `workspace.lab` y Volume | ✅ creados |
-| Conectores (5 fuentes) | ✅ ~4 900 documentos en `documents_staging` |
+| Conectores (5 fuentes) | ✅ 4 945 documentos en `documents_staging` |
 | Tablas numéricas para modelar | ✅ `enzyme_features` (213), `pet_activity` (1 570), vista `pet_activity_ml` |
+| Endpoint de Vector Search `lab-vs` | ✅ creado y ONLINE |
 | Curación → `documents_curated` | ⏳ ver `docs/CURACION.md` |
-| Índice AI Search | ⏳ pendiente del endpoint `lab-vs` |
+| Índice AI Search sobre `documents_curated` | ⏳ |
 | Grafo de agentes Omnigent | ⏳ |
 | Puente API + visor Quest 2 | ⏳ |
 
@@ -100,6 +101,7 @@ data_pipeline/        Conectores e ingesta  → docs en data_pipeline/README.md
   connectors/         europepmc, openalex, pdb, alphafold, zenodo
   datasets/           pet_activity: secuencias → tabla numérica (Biopython)
   databricks_io.py    SQL y subida al Volume
+algorithms/           Modelos predictivos sobre pet_activity_ml
 agent_lab/            Agentes Omnigent y herramientas de datos
 ar_vr_bridge/         Puente API + WebSocket y esqueleto del visor WebXR
 sql/                  Esquema de Unity Catalog
