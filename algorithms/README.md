@@ -39,6 +39,26 @@ uv run python -m data_pipeline.datasets.pet_activity   # deja los CSV en data/da
 4. **No rellenes huecos con cero.** Las 1 570 filas son mediciones reales; las condiciones no
    medidas ya están excluidas.
 
+## Correr los tres algoritmos
+
+`pet_activity_pipeline.py` aplica los motores de `ia_generica` (IDA\*, genético + MLP, alfa-beta)
+con las cuatro reglas de arriba ya puestas: partición por `cv_split`, exclusión de `enzyme_id`,
+del otro objetivo y de `design_round`/`temporal_split`, tarea explícita y macro-F1.
+
+```bash
+uv run python -m algorithms.pet_activity_pipeline                    # pasos 1-3, objetivo is_active
+uv run python -m algorithms.pet_activity_pipeline --pasos 1 --max-variables 3
+uv run python -m algorithms.pet_activity_pipeline --objetivo activity
+```
+
+- Lee `workspace.lab.pet_activity_ml` y, si Databricks no responde, los CSV locales.
+- Los motores (IDA\*, genético + MLP, alfa-beta) viven en `algorithms/ia_generica/` y son genéricos:
+  sirven para cualquier CSV tabular. Se pueden sustituir con `--ia-generica RUTA` o `IA_GENERICA=RUTA`.
+- Antes de los pasos corre dos baselines en condiciones idénticas: clase mayoritaria y bosque
+  con todas las columnas.
+- Resultados en `data/resultados/algorithms/pipeline_<objetivo>.json` (fuera de git).
+- El paso 1 es el lento: unos 3,5 min con `--max-variables 3` y crece combinatoriamente.
+
 ## Qué reportar
 
 Media ± desviación en validación cruzada, gap train/val, y la comparación baseline frente al

@@ -41,6 +41,14 @@ CREATE TABLE IF NOT EXISTS workspace.lab.documents_curated (
   metadata     STRING,
   approved_by  STRING,
   approved_at  TIMESTAMP,
+  -- Etiquetas por trozo (ver docs/SUBTEMAS.md). En un workspace que ya tiene la tabla se anaden
+  -- con data_pipeline/curation/migrar_esquema.py: editar este CREATE no modifica una tabla existente.
+  relevance          STRING COMMENT 'Nivel de relevancia del documento (titulo + resumen); filtro por defecto del RAG',
+  language           STRING COMMENT 'Idioma detectado por heuristica: en, es, pt, de, fr, cjk, cirilico, desconocido',
+  subtopic           STRING COMMENT 'Subtema principal del trozo (7 aprobados) o NULL si ninguno llega al umbral',
+  subtopic_secondary STRING COMMENT 'Segundo subtema si pesa casi como el primero, o NULL',
+  evidence_type      STRING COMMENT 'Tipo de evidencia derivado de la seccion: resumen, tabla, metodos, resultados...',
+  enzyme             ARRAY<STRING> COMMENT 'Enzimas especificas nombradas en el trozo (no incluye PETase generica)',
   CONSTRAINT documents_curated_pk PRIMARY KEY (chunk_id)
 ) TBLPROPERTIES (delta.enableChangeDataFeed = true)
   COMMENT 'Corpus aprobado y troceado; fuente del índice de AI Search';
