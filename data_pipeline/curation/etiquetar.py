@@ -124,10 +124,10 @@ _EV = [
     ("metodos", re.compile(r"(?i)method|material|experimental|procedure|protocol|preparation|cloning|purification|"
                            r"\bstrains?\b|plasmids?|culture|growth conditions|statistical|data analysis|assays?\b|"
                            r"measurements?$|samples?\b|computational details|simulation (?:setup|details)")),
-    ("discusion", re.compile(r"(?i)discussion|conclusion|outlook|perspective|future|summary|challenges|"
-                             r"limitations|implications|concluding")),
     ("resultados", re.compile(r"(?i)result|finding|characteri[sz]ation|screening|identification|"
                               r"activity|stability|kinetic|structur|simulation")),
+    ("discusion", re.compile(r"(?i)discussion|conclusion|outlook|perspective|future|summary|challenges|"
+                             r"limitations|implications|concluding")),
 ]
 
 

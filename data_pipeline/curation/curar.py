@@ -90,14 +90,17 @@ ADMIN = re.compile(
     r"reporting summary|competing interests?|declarations?|disclosures?|ethic|supplementary|"
     r"supporting information|associated data|abbreviations?|glossary|additional information|"
     r"peer review|publisher['\u2019]?s note|open access|credit|institutional review|"
-    r"informed consent|consent to)")
+    r"informed consent|consent to|lead contact|technical contact|contact for|"
+    r"correspondence\s*(?:$|:|to\b|and request|should)|data,? code|for correspondence)")
+
+CORREO = re.compile(r"[A-Za-z0-9._%+\-]+@[A-Za-z0-9\-]+\.[A-Za-z0-9.\-]+")
 
 
 def limpiar_html(texto):
     """Titulos y texto llegan con '&lt;i&gt;' (doble escape) y '<sub>cat</sub>': se limpian al emitir."""
     if not texto:
         return texto
-    t = html.unescape(html.unescape(texto))
+    t = CORREO.sub("[correo omitido]", html.unescape(html.unescape(texto)))   # sin datos personales
     t = re.sub(r"</?(?:sub|sup)>", "", t)                     # k<sub>cat</sub> -> kcat
     t = re.sub(r"</?[A-Za-z][A-Za-z0-9]*(?:\s[^<>]*)?/?>", "", t)
     return re.sub(r"[ \t]{2,}", " ", t)
@@ -512,7 +515,7 @@ def _lista_autores(valor) -> list[str]:
     return [valor] if valor else []
 
 
-def publicar(db, chunks: list[dict], aprobador: str) -> None:
+def publicar(db, chunks: list[dict], aprobador: str, quitar_huerfanos: bool = False) -> None:
     """Escribe en documents_curated. Solo se llama con --aprobar.
 
     JSON Lines en el Volume y un unico MERGE por chunk_id: se puede repetir sin
@@ -562,6 +565,15 @@ def publicar(db, chunks: list[dict], aprobador: str) -> None:
                   n.doi, n.url, n.license, n.section, n.text, n.metadata, n.relevance,
                   n.language, n.subtopic, n.subtopic_secondary, n.evidence_type, n.enzyme,
                   :aprobador, current_timestamp())""", params={"aprobador": aprobador})
+    # MERGE no borra: un trozo que ya no esta en la propuesta (p. ej. una seccion que ahora se
+    # descarta) seguiria en la tabla. Se cuentan siempre y solo se eliminan si se pide.
+    huerfanos = f"""chunk_id NOT IN (SELECT chunk_id FROM read_files('{ruta}', format => 'json'))"""
+    n_h = int(db.sql(f"SELECT count(*) FROM {DESTINO} WHERE {huerfanos}")[0][0])
+    if n_h and quitar_huerfanos:
+        db.sql(f"DELETE FROM {DESTINO} WHERE {huerfanos}")
+        print(f"   eliminados {n_h} trozos que ya no estan en la propuesta")
+    elif n_h:
+        print(f"   AVISO: {n_h} trozos de la tabla ya no estan en la propuesta (usa --quitar-huerfanos)")
     n = db.sql(f"SELECT count(*), count(DISTINCT doc_id) FROM {DESTINO}")[0]
     print(f"   {DESTINO}: {n[0]} chunks de {n[1]} documentos")
     # Regla del repo: cada decision de curacion relevante queda registrada y se puede reconstruir.
@@ -578,6 +590,8 @@ def main() -> None:
     ap.add_argument("--aprobar", metavar="NOMBRE",
                     help="publica en documents_curated con ese approved_by. "
                          "Sin esta opcion no se escribe nada en Databricks.")
+    ap.add_argument("--quitar-huerfanos", action="store_true",
+                    help="con --aprobar, borra de la tabla los trozos que ya no estan en la propuesta")
     ap.add_argument("--salida", default=str(SALIDA))
     args = ap.parse_args()
 
@@ -624,7 +638,7 @@ def main() -> None:
 
     if args.aprobar:
         print(f"\nPublicando en {DESTINO} como '{args.aprobar}'...")
-        publicar(db, chunks, args.aprobar)
+        publicar(db, chunks, args.aprobar, args.quitar_huerfanos)
     else:
         print("\nNO se escribio en Databricks (es una propuesta). Revisa la muestra y, "
               "si esta bien, vuelve a correr con --aprobar \"Tu Nombre\".")

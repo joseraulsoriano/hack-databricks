@@ -19,8 +19,8 @@ uv run python -m data_pipeline.curation.extraer_mutantes \
     --desde data/resultados/curacion/mutant_stability_revisada.json --solo-verificadas --aprobar "Tu Nombre"
 ```
 
-**Qué se revisa lo decide una regla.** Solo filas con enzima y sin "respectively" (hoy 155 de
-291). Con `--muestra N` se sortea una muestra estratificada por confianza con semilla fija
+**Qué se revisa lo decide una regla.** Solo filas con enzima y sin "respectively" (hoy 156 de
+299 filas). Con `--muestra N` se sortea una muestra estratificada por confianza con semilla fija
 (reproducible). Las demás no se publican: completar el sujeto de una fila sin enzima es otro trabajo.
 
 **Cuatro preguntas de sí/no por fila**, y la decisión se deriva de las respuestas:
