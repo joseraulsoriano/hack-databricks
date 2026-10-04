@@ -28,6 +28,7 @@ KEEPWARM_SECONDS = int(os.environ.get("VS_KEEPWARM_SECONDS", "45"))
 
 _TAGS = re.compile(r"<[^>]+>")
 _client: WorkspaceClient | None = None
+_por_trozos: bool | None = None   # None = todavia no se consulto
 
 
 def _workspace() -> WorkspaceClient:
@@ -50,7 +51,42 @@ def _query(text: str, num_results: int) -> list[list]:
     return resp.get("result", {}).get("data_array", []) or []
 
 
-def _to_citations(rows: list[list], limit: int) -> list[Citation]:
+def _query_con_texto(text: str, num_results: int) -> list[dict]:
+    """Como `_query`, pero pide también el texto y mapea por nombre de columna.
+
+    Mapear por nombre y no por posición: el índice devuelve `manifest.columns` con el
+    orden real, y así añadir una columna no rompe el desempaquetado.
+    """
+    resp = _workspace().api_client.do(
+        "POST", f"/api/2.0/vector-search/indexes/{INDEX}/query",
+        body={"query_text": text, "columns": [*COLUMNS, "text"], "num_results": num_results},
+    )
+    nombres = [c.get("name") for c in (resp.get("manifest") or {}).get("columns", [])]
+    filas = resp.get("result", {}).get("data_array", []) or []
+    return [dict(zip(nombres, fila)) for fila in filas]
+
+
+def indice_por_trozos() -> bool:
+    """True si el índice está construido sobre los trozos curados (`documents_curated`).
+
+    Importa para el `snippet`: con un índice por trozo, el texto que devuelve el índice
+    **es** el pasaje que disparó el acierto. Con el índice por documento (`rag_v0`) ese
+    texto es el documento entero, y recortarlo daría el principio del artículo, no la
+    frase que sostiene la afirmación. Se consulta una vez y se cachea.
+    """
+    global _por_trozos
+    if _por_trozos is None:
+        try:
+            info = _workspace().api_client.do("GET", f"/api/2.0/vector-search/indexes/{INDEX}")
+            origen = (info.get("delta_sync_index_spec") or {}).get("source_table", "")
+            _por_trozos = origen.endswith("documents_curated")
+        except Exception:
+            _por_trozos = False  # ante la duda, el camino conservador
+    return _por_trozos
+
+
+def _to_citations(rows: list[list], limit: int,
+                  textos_por_chunk: dict | None = None) -> list[Citation]:
     """Colapsa por DOI: 943 artículos están en Europe PMC y OpenAlex a la vez.
 
     Sin esto, una consulta de 5 resultados puede devolver solo 3 artículos distintos.
@@ -68,6 +104,8 @@ def _to_citations(rows: list[list], limit: int) -> list[Citation]:
             id=f"c{len(citations) + 1}", doc_id=doc_id, title=clean(title),
             year=int(year) if year else None, doi=doi or "", url=url or "",
             source=source or "", score=round(float(score), 3),
+            # Con indice por trozos, este es el pasaje que casó, no una aproximacion.
+            snippet=((textos_por_chunk or {}).get(chunk_id) or "").strip()[:400],
         ))
         if len(citations) >= limit:
             break
@@ -152,15 +190,26 @@ def search(query: str, num_results: int = 5,
     en el camino de voz, que tiene 1,5 s. Por eso esta apagado por defecto.
     """
     started = time.perf_counter()
-    rows = _query(query, num_results * 4)
-    citations = _to_citations(rows, num_results * 2)
+    por_trozos = indice_por_trozos()
+
+    if por_trozos:
+        # El indice ya es de trozos curados: el texto que devuelve ES el pasaje que
+        # casó, y viene en la misma llamada. Sin SQL extra y sin aproximar nada.
+        filas = _query_con_texto(query, num_results * 4)
+        textos_por_chunk = {f.get("chunk_id"): (f.get("text") or "") for f in filas}
+        rows = [[f.get(c) for c in COLUMNS] + [f.get("score", 0.0)] for f in filas]
+    else:
+        textos_por_chunk = {}
+        rows = _query(query, num_results * 4)
+
+    citations = _to_citations(rows, num_results * 2, textos_por_chunk)
 
     permitidos = aprobados()
     if permitidos is not None:
         citations = [c for c in citations if c.doc_id in permitidos]
     citations = citations[:num_results]
 
-    if con_snippet and citations:
+    if not por_trozos and con_snippet and citations:
         textos = _snippets([c.doc_id for c in citations], query)
         citations = [c.model_copy(update={"snippet": textos.get(c.doc_id, "")}) for c in citations]
 

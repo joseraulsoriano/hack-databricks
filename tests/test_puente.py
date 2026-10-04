@@ -20,13 +20,15 @@ class FiltroDeCuracion(unittest.TestCase):
     """879 documentos del indice no estan en documents_curated: no se pueden citar."""
 
     def setUp(self):
-        self.orig = (retrieval._query, retrieval._sql, retrieval._aprobados, retrieval._aprobados_ts)
+        self.orig = (retrieval._query, retrieval._sql, retrieval._aprobados,
+                     retrieval._aprobados_ts, retrieval._por_trozos)
         retrieval._query = lambda texto, n: list(FILAS)
         retrieval._aprobados, retrieval._aprobados_ts = set(CURADOS), 9e18
+        retrieval._por_trozos = False      # indice por documento (rag_v0)
 
     def tearDown(self):
-        (retrieval._query, retrieval._sql,
-         retrieval._aprobados, retrieval._aprobados_ts) = self.orig
+        (retrieval._query, retrieval._sql, retrieval._aprobados,
+         retrieval._aprobados_ts, retrieval._por_trozos) = self.orig
 
     def test_un_documento_sin_curar_no_se_cita_aunque_puntue_mas_alto(self):
         citas, _, _ = retrieval.search("thermostability", 5)
@@ -51,17 +53,19 @@ class Snippet(unittest.TestCase):
     """El visor del equipo muestra `snippet` como la frase que sostiene la cita."""
 
     def setUp(self):
-        self.orig = (retrieval._query, retrieval._sql, retrieval._aprobados, retrieval._aprobados_ts)
+        self.orig = (retrieval._query, retrieval._sql, retrieval._aprobados,
+                     retrieval._aprobados_ts, retrieval._por_trozos)
         retrieval._query = lambda texto, n: list(FILAS)
         retrieval._aprobados, retrieval._aprobados_ts = set(CURADOS), 9e18
+        retrieval._por_trozos = False
         retrieval._sql = lambda s: [
             ["europepmc:35382549", "Engineering thermostable IsPETase variants for degradation."],
             ["europepmc:40069109", "Un texto sin relacion alguna con la consulta pedida."],
         ]
 
     def tearDown(self):
-        (retrieval._query, retrieval._sql,
-         retrieval._aprobados, retrieval._aprobados_ts) = self.orig
+        (retrieval._query, retrieval._sql, retrieval._aprobados,
+         retrieval._aprobados_ts, retrieval._por_trozos) = self.orig
 
     def test_se_elige_el_trozo_que_comparte_terminos_con_la_consulta(self):
         citas, _, _ = retrieval.search("thermostable degradation", 5, con_snippet=True)
@@ -79,6 +83,37 @@ class Snippet(unittest.TestCase):
         retrieval._sql = lambda s: llamadas.append(s) or []
         retrieval.search("thermostable", 5)            # con_snippet=False por defecto
         self.assertEqual(llamadas, [])
+
+
+class IndicePorTrozos(unittest.TestCase):
+    """Con `rag_v1_idx` (sobre documents_curated) el texto que devuelve el indice ES
+    el pasaje que caso: no hay que aproximarlo ni pagar una consulta SQL."""
+
+    def setUp(self):
+        self.orig = (retrieval._query_con_texto, retrieval._sql, retrieval._aprobados,
+                     retrieval._aprobados_ts, retrieval._por_trozos)
+        retrieval._por_trozos = True
+        retrieval._aprobados, retrieval._aprobados_ts = set(CURADOS), 9e18
+        retrieval._query_con_texto = lambda texto, n: [
+            {"chunk_id": "c2", "doc_id": "europepmc:35382549", "title": "Engineering",
+             "year": 2022, "doi": "10.1/b", "url": "u2", "source": "europepmc",
+             "text": "The variant retained 85.8 percent activity at 60 degrees.", "score": 0.817},
+        ]
+
+    def tearDown(self):
+        (retrieval._query_con_texto, retrieval._sql, retrieval._aprobados,
+         retrieval._aprobados_ts, retrieval._por_trozos) = self.orig
+
+    def test_el_snippet_es_el_trozo_que_devolvio_el_indice(self):
+        citas, _, _ = retrieval.search("activity at 60", 5)
+        self.assertEqual(len(citas), 1)
+        self.assertIn("85.8", citas[0].snippet)
+
+    def test_no_se_consulta_sql_para_el_snippet(self):
+        llamadas = []
+        retrieval._sql = lambda s: llamadas.append(s) or []
+        retrieval.search("activity at 60", 5, con_snippet=True)
+        self.assertEqual(llamadas, [], "con indice por trozos el snippet ya viene en la consulta")
 
 
 class EventosDelVisor(unittest.TestCase):

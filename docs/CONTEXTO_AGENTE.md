@@ -69,9 +69,24 @@ nuevos. Detalle en [`ALCANCE.md`](ALCANCE.md).
 ### El índice vectorial no es el corpus curado
 
 ```
-workspace.lab.rag_v0_idx   ONLINE   pipeline TRIGGERED (no sincroniza solo)
+workspace.lab.rag_v0_idx   ONLINE                          <- el que se usa HOY
   └── origen: workspace.lab.rag_v0 — 4 213 filas = 4 213 docs, UNA FILA POR DOCUMENTO
+
+workspace.lab.rag_v1_idx   PROVISIONING_INITIAL_SNAPSHOT   <- el bueno, construyendose
+  └── origen: workspace.lab.documents_curated — por TROZO (2 850 de 21 907 al 2026-10-03)
 ```
+
+**El cambio a `rag_v1_idx` es una variable de entorno, no código:**
+
+```bash
+VS_INDEX=workspace.lab.rag_v1_idx uv run uvicorn ar_vr_bridge.app:app --port 8010
+```
+
+`retrieval.indice_por_trozos()` detecta solo que el origen es `documents_curated` y entonces el
+`snippet` pasa a ser **el pasaje que disparó el acierto**, traído en la misma consulta: sin SQL
+extra y sin aproximar. Probado contra el índice a medio construir: funciona y devuelve trozos
+reales (470-709 ms). **Espera a que `ready: true`**: con 2 850 de 21 907 trozos la cobertura
+todavía es parcial.
 
 - **879** documentos indexados **no** están en `documents_curated`: nadie los aprobó.
 - **90** documentos curados **no** están indexados: invisibles para la búsqueda.
@@ -221,6 +236,6 @@ No las vuelvas a descubrir. Detalle en [`CURACION.md`](CURACION.md) y
 ## 9. Cómo comprobar que todo esto sigue siendo cierto
 
 ```bash
-uv run python -m unittest discover -s tests -v     # 72 pruebas, sin red ni Databricks
+uv run python -m unittest discover -s tests -v     # 74 pruebas, sin red ni Databricks
 uv run uvicorn ar_vr_bridge.app:app --port 8010    # el puerto que espera el visor
 ```
