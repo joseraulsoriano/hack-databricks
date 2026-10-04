@@ -64,7 +64,7 @@ nuevos. Detalle en [`ALCANCE.md`](ALCANCE.md).
 | `workspace.lab.pet_activity_ml` | **1 570** × 42 col. | ✅ | Vista lista para modelar (enzima × condición) |
 | `workspace.lab.enzyme_features` | 213 | ✅ | Una fila por enzima, 33 columnas numéricas |
 | `workspace.lab.mutant_stability` | **0** | ⚠️ **vacía** | Cualquier hipótesis que cite un `record_id` se rechaza hoy |
-| `workspace.lab.research_record` | **2** | ⚠️ prácticamente vacía | El brief exige registro compartido; hoy no se está escribiendo |
+| `workspace.lab.research_record` | 3 y creciendo | ✅ **el puente ya escribe** | Toda consulta del visor, veredicto de hipótesis y aprobación deja traza |
 
 ### El índice vectorial no es el corpus curado
 
@@ -168,6 +168,31 @@ y umbral, y un `receipt_hash` reproducible. Criterio completo en
 
 ---
 
+## 4.bis La traza en `research_record`
+
+Lo que entra por el puente deja rastro en Databricks. Antes no: el front podía conectar
+perfectamente y no aparecer en ninguna tabla, lo que hacía imposible comprobar una prueba de
+conexión y dejaba sin cumplir el *«shared research record»* que pide el brief.
+
+| Cuándo | `kind` | `from_agent` → `to_agent` |
+|---|---|---|
+| Llega una consulta al bucle (WS o REST) | `handoff` | `viewer` → `bridge` |
+| Se resuelve una hipótesis en la puerta | `decision` | `submitted_by` → `gate` |
+| Una persona aprueba o rechaza | `approval` | `human:visor` → `safety_agent` |
+
+Tres reglas, porque esto vive en una demo en vivo: **no bloquea** (va en segundo plano, el visor
+no espera a Databricks), **no rompe** (si el warehouse cae se pierde la traza y se sigue) y **no
+inunda** (se anotan decisiones, no cada nodo: ~3 escrituras por sesión).
+
+Se apaga con `RESEARCH_RECORD=0`.
+
+```sql
+SELECT ts, session_id, from_agent, to_agent, kind, summary
+  FROM workspace.lab.research_record ORDER BY ts DESC LIMIT 20;
+```
+
+---
+
 ## 5. Lo que el visor consume, y por tanto no se puede romper
 
 `gate/bridge.py` de `kevdev04/hacknation` ya consume `WS /ws/explore` y devuelve decisiones a
@@ -196,7 +221,7 @@ el trozo real.
 |---|---|---|
 | `agent_lab/runtime.py` con `stream_discovery(query, query_id)` | ❌ no existe — **lo implementa el equipo del orquestador, no este repo** (ver §0) | Mientras tanto `mode: "live"` cae al simulador, y lo anuncia |
 | `mutant_stability` poblada | ❌ 0 filas | La vía numérica de la puerta no se puede usar |
-| `research_record` escribiéndose | ⚠️ 2 filas | El brief lo exige explícitamente |
+| `research_record` escribiéndose | ✅ hecho | El puente anota `handoff` / `decision` / `approval` |
 | Índice sobre trozos curados | ⏳ lo prepara `kevdev04` | Hasta entonces, filtro + snippet aproximado |
 
 La caída a simulador **ya no es silenciosa**: si pides `live` y no hay orquestador, sale un
@@ -212,6 +237,7 @@ el reloj real marcaba 13 639.
 | `agent_lab.tools.search_staging` | Búsqueda por texto en `documents_staging` (sin curar) |
 | `agent_lab.tools.fetch_sources` | Amplía el corpus desde las 5 fuentes abiertas |
 | `agent_lab.tools.staging_stats` | Conteos del corpus |
+| `ar_vr_bridge.registro.anotar` | Deja traza en `research_record` sin bloquear ni romper |
 | `agent_lab.procedencia.verificar` | La puerta, sin red: recibe corpus y registros como datos |
 | `agent_lab.procedencia_fuente.cargar_*` | Lee de Databricks solo lo citado |
 | `ar_vr_bridge.retrieval.search` | RAG con filtro de curación y `snippet` opcional |
@@ -236,6 +262,6 @@ No las vuelvas a descubrir. Detalle en [`CURACION.md`](CURACION.md) y
 ## 9. Cómo comprobar que todo esto sigue siendo cierto
 
 ```bash
-uv run python -m unittest discover -s tests -v     # 74 pruebas, sin red ni Databricks
+uv run python -m unittest discover -s tests -v     # 79 pruebas, sin red ni Databricks
 uv run uvicorn ar_vr_bridge.app:app --port 8010    # el puerto que espera el visor
 ```

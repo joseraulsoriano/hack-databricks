@@ -23,7 +23,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
-from ar_vr_bridge import mock, retrieval
+from ar_vr_bridge import mock, registro, retrieval
 from ar_vr_bridge.contract import (
     SCHEMA_VERSION, Answer, AskRequest, AskResponse, Check, ExploreRequest, ExploreResponse,
     HypothesisReceipt, HypothesisRequest, StageEvent,
@@ -114,6 +114,14 @@ async def hypothesis(request: HypothesisRequest) -> HypothesisReceipt:
                           detail=f"no se pudo leer el corpus curado: {exc}")])
 
     recibo = procedencia.verificar(entrada, corpus, registros, columnas)
+    registro.anotar(
+        "decision", f"hipótesis {recibo['veredicto']}: {entrada['statement'][:200]}",
+        session_id=f"hyp_{recibo['recibo_hash']}",
+        from_agent=entrada.get("submitted_by") or "unknown", to_agent="gate",
+        weight=1.0 if recibo["veredicto"] != "RECHAZADA" else 0.0,
+        refs=doc_ids,
+        payload={"recibo_hash": recibo["recibo_hash"], "veredicto": recibo["veredicto"],
+                 "fallos": recibo["fallos"], "avisos": recibo["avisos"]})
     return HypothesisReceipt(
         receipt_hash=recibo["recibo_hash"], verdict=recibo["veredicto"],
         admitted=recibo["veredicto"] != "RECHAZADA",
@@ -135,6 +143,12 @@ async def _events(query: str, query_id: str, mode: str):
        tiempo de pared de verdad, y vale igual para el orquestador cuando llegue.
     """
     started = time.monotonic()
+
+    # Que una prueba de conexión del visor deje rastro en Databricks. Antes el front
+    # podía conectar perfectamente y no aparecer en ninguna tabla.
+    registro.anotar("handoff", f"consulta recibida del visor: {query[:200]}",
+                    session_id=query_id, from_agent="viewer", to_agent="bridge",
+                    payload={"query": query, "mode_pedido": mode})
 
     if mode == "live":
         try:
@@ -213,6 +227,10 @@ async def approve(approval_id: str, decision: str = "approve") -> dict:
     fut = _pending_approvals.get(approval_id)
     if fut is None:
         return {"status": "unknown_approval", "approval_id": approval_id}
+    registro.anotar("approval", f"decisión humana: {decision}",
+                    session_id=approval_id, from_agent="human:visor", to_agent="safety_agent",
+                    flow="safety", weight=1.0 if decision == "approve" else 0.0,
+                    payload={"decision": decision, "approval_id": approval_id})
     if not fut.done():
         fut.set_result(decision)
     return {"status": "ok", "approval_id": approval_id, "decision": decision}
