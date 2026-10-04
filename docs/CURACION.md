@@ -103,9 +103,20 @@ con **1 679 estructuras AF2 en PDB**, por si quieres features 3D o usarlas en el
 Problemas reales que tiene el corpus, verificados:
 
 1. **Duplicados entre fuentes.** Medido sobre las 4 945 filas: hay **3 352 DOIs distintos** y
-   **943 DOIs que aparecen en Europe PMC y OpenAlex a la vez**. Deduplica por `doi` (ya viene
-   normalizado: minúsculas, sin prefijo) y **prefiere la fila de Europe PMC cuando tenga
-   `full_text`**. Quedan **387 filas sin DOI**: para esas, usa `content_hash` o el título.
+   **1 016 DOIs repetidos en 2 222 filas** (881 de ellos entre Europe PMC y OpenAlex).
+   Deduplica por `doi` (ya viene normalizado: minúsculas, sin prefijo) y **prefiere la fila de
+   Europe PMC cuando tenga `full_text`**. Quedan **387 filas sin DOI**: para esas, usa
+   `content_hash` o el título.
+
+   > **Trampa: el DOI de una estructura PDB es el del artículo que la describe.** 98 DOIs
+   > distintos cubren 237 estructuras PDB, y 47 DOIs se comparten entre estructuras diferentes.
+   > Si deduplicas por DOI sin más, un artículo "absorbe" sus estructuras y una estructura
+   > absorbe a las demás: la primera versión del pipeline perdió **201 de 301** (y el registro
+   > propio de 68 de las 95 con mutaciones declaradas, que es justo el dato valioso).
+   > **Deduplica solo entre registros del mismo tipo** (artículo, preprint, tesis, publicación)
+   > y **nunca** colapses `doc_type = structure` ni `prediction`: cada estructura es un registro
+   > distinto aunque comparta el DOI. El criterio vive en `data_pipeline/curation/curar.py`
+   > (`LITERATURA`, `NUNCA_DEDUP`). Lo mismo vale si colapsas por DOI al recuperar.
 2. **Ruido temático.** La consulta fue amplia a propósito (`PETase OR "PET hydrolase" OR
    "poly(ethylene terephthalate) hydrolase"`): trae cutinasas, MHETasas y reciclaje en general.
    Filtra o etiqueta; no borres sin registrar el criterio.

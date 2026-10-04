@@ -30,7 +30,9 @@ TAREAS, en este orden
    aprovechable, distribución por source/doc_type/year. No borres nada todavía.
 
 2. Escribe el pipeline de curación staging -> documents_curated:
-   - deduplica por doi (normalizado), prefiriendo Europe PMC cuando tenga full_text;
+   - deduplica por doi (normalizado), prefiriendo Europe PMC cuando tenga full_text,
+     SOLO entre articulos/preprints/tesis. NUNCA colapses doc_type structure ni prediction:
+     el DOI de una estructura PDB es el del articulo que la describe y no es un duplicado;
      usa content_hash para copias exactas sin doi
    - filtra o etiqueta el ruido temático (la consulta fue amplia: trae cutinasas y
      reciclaje en general)
