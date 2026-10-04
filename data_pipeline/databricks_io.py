@@ -42,7 +42,19 @@ class Databricks:
             resp = self.w.statement_execution.get_statement(resp.statement_id)
         if resp.status.state != StatementState.SUCCEEDED:
             raise RuntimeError(f"SQL falló ({resp.status.state}): {resp.status.error.message if resp.status.error else ''}")
-        return resp.result.data_array if resp.result and resp.result.data_array else []
+        if not resp.result:
+            return []
+        # Un resultado grande llega en varios trozos (next_chunk_index). Leer solo el primero
+        # devolvia filas de menos SIN avisar: con 13 columnas de documents_curated, 19 180 de 21 915.
+        datos = list(resp.result.data_array or [])
+        siguiente = resp.result.next_chunk_index
+        while siguiente is not None:
+            trozo = self.w.statement_execution.get_statement_result_chunk_n(resp.statement_id, siguiente)
+            datos.extend(trozo.data_array or [])
+            siguiente = trozo.next_chunk_index
+        # Mas de 25 MB en un solo resultado (disposition INLINE) falla con un error explicito: en
+        # ese caso hay que paginar con LIMIT/OFFSET, como hace curar.leer_staging.
+        return datos
 
     def apply_sql_file(self, path: Path) -> int:
         # Solo líneas de comentario completas y ';' a final de línea: los COMMENT '...' pueden llevar ambos.
