@@ -26,7 +26,7 @@ from fastapi.staticfiles import StaticFiles
 from ar_vr_bridge import mock, retrieval
 from ar_vr_bridge.contract import (
     SCHEMA_VERSION, Answer, AskRequest, AskResponse, Check, ExploreRequest, ExploreResponse,
-    HypothesisReceipt, HypothesisRequest,
+    HypothesisReceipt, HypothesisRequest, StageEvent,
 )
 
 STATIC = Path(__file__).parent / "static"
@@ -52,9 +52,15 @@ async def health() -> dict:
 
 @app.on_event("startup")
 async def _startup() -> None:
-    """Mantiene caliente el índice: en frío el p95 medido salta a 4,4 s."""
+    """Calienta el índice y precarga qué documentos están curados.
+
+    Las dos cosas son de arranque por la misma razón: medidas, el índice en frío
+    sube el p95 a 4,4 s y leer los 3 424 `doc_id` aprobados cuesta 3,3 s. Pagarlas
+    aquí deja la primera pregunta de la demo en los ~320 ms de siempre.
+    """
     if os.environ.get("VS_KEEPWARM", "1") == "1":
         app.state.keepwarm = asyncio.create_task(retrieval.keep_warm())
+    app.state.aprobados = asyncio.create_task(asyncio.to_thread(retrieval.aprobados))
 
 
 @app.post("/api/v1/ask", response_model=AskResponse)
@@ -117,18 +123,40 @@ async def hypothesis(request: HypothesisRequest) -> HypothesisReceipt:
 
 
 async def _events(query: str, query_id: str, mode: str):
-    """Fuente de eventos. 'mock' simula; 'live' delega en el lab de agentes cuando exista."""
+    """Fuente de eventos. 'live' delega en el orquestador; 'mock' simula.
+
+    Dos reglas que no se negocian, porque el visor enseña lo que salga de aquí:
+
+    1. **La caída a simulador se anuncia.** Antes era silenciosa: pedías `live`, no
+       existía `agent_lab.runtime` y el visor mostraba un guion creyendo que era el
+       laboratorio. Ahora sale un `stage` que lo dice, y el cliente puede pintarlo.
+    2. **La latencia se mide, no se declara.** El `DoneEvent` del simulador traía
+       9000 ms fijos mientras el reloj real marcaba 13 600. Aquí se reescribe con el
+       tiempo de pared de verdad, y vale igual para el orquestador cuando llegue.
+    """
+    started = time.monotonic()
+
     if mode == "live":
         try:
-            from agent_lab.runtime import stream_discovery  # aún no implementado
+            from agent_lab.runtime import stream_discovery
         except ImportError:
             mode = "mock"
+            yield StageEvent(
+                query_id=query_id, stage="received", progress=0.0,
+                message="El orquestador no está conectado: esto es el simulador, no el laboratorio.")
+
+    if mode == "live":
+        from agent_lab.runtime import stream_discovery
+        origen = stream_discovery(query, query_id)
+    else:
+        origen = mock.stream(query, query_id)
+
+    async for event in origen:
+        if event.event == "done":
+            yield event.model_copy(update={
+                "latency_ms": int((time.monotonic() - started) * 1000)})
         else:
-            async for event in stream_discovery(query, query_id):
-                yield event
-            return
-    async for event in mock.stream(query, query_id):
-        yield event
+            yield event
 
 
 @app.websocket("/ws/explore")

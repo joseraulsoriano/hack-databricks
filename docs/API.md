@@ -4,6 +4,7 @@ Referencia de los endpoints que consumen el visor WebXR (Meta Quest 2), el clien
 cualquier otro cliente.
 
 **Base en desarrollo:** `http://localhost:8000`
+**Puerto que espera el visor del equipo:** `:8010` (su Gate API ocupa el `:8000`)
 **Base en gafas:** una URL HTTPS (túnel o Databricks App). WebXR exige contexto seguro.
 
 ```bash
@@ -26,7 +27,7 @@ transporte; aquel, la forma de los datos.
 | `POST` | `/api/v1/explore` | El mismo bucle, respuesta de una pieza | ✅ |
 | `POST` | `/api/v1/approve/{approval_id}` | Responder a una aprobación humana | ✅ |
 | `POST` | `/api/v1/hypothesis` | **Puerta de entrada.** Admite o rechaza una hipótesis por su procedencia | ✅ |
-| `POST` | `/api/v1/ask` | **Camino rápido para la voz.** Solo RAG, < 1,5 s | ⏳ por implementar |
+| `POST` | `/api/v1/ask` | **Camino rápido para la voz.** Solo RAG, < 1,5 s | ✅ |
 
 ---
 
@@ -197,9 +198,9 @@ cotejar, nada se admite a ciegas.
 
 ---
 
-## `POST /api/v1/ask` — camino rápido para la voz ⏳
+## `POST /api/v1/ask` — camino rápido para la voz
 
-**Todavía no implementado.** Esta es su especificación, para quien lo construya.
+Implementado y medido: **p50 318 ms** en caliente, 2 054 ms en frío.
 
 Consulta **solo** el índice vectorial y devuelve una respuesta corta con su cita. No lanza
 hipótesis, ni experimento, ni validación: por eso cabe en el presupuesto de la voz.

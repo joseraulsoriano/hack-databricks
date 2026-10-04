@@ -98,7 +98,7 @@ omnigent login dbc-19f58290-50fb.cloud.databricks.com/omnigent
 ## Pruebas
 
 ```bash
-uv run python -m unittest discover -s tests -v    # 64 pruebas, sin red ni Databricks
+uv run python -m unittest discover -s tests -v    # 72 pruebas, sin red ni Databricks
 ```
 
 Cada caso fija un error real que se encontró al revisar los datos (la trampa del DOI en PDB, un
@@ -125,6 +125,7 @@ docs/                 Arranque por persona:
   CASOS_DE_PRUEBA.md    14 casos para probar el bucle completo
   ALCANCE.md            qué hace y qué no hace el proyecto
   VERIFICABILIDAD.md    cómo se justifica cada afirmación y qué admite el lab
+  CONTEXTO_AGENTE.md    resumen medido del que se alimenta el orquestador
 
 ```
 
