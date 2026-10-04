@@ -138,7 +138,13 @@ No tienes que crearlo: solo el índice encima.
 - Columna de texto: `text`
 - Clave primaria: `chunk_id`
 - Modelo de embeddings: `databricks-gte-large-en`
-- Columnas a devolver: `chunk_id, doc_id, title, year, doi, url, source, section, license`
+- Columnas a devolver: `chunk_id, doc_id, title, year, doi, url, source, section, license,
+  relevance, language, subtopic, subtopic_secondary, evidence_type, enzyme`
+- **Filtro por defecto recomendado** para las consultas de los agentes:
+  `relevance IN ('nucleo_pet_enzima','enzima_plasticos_sin_pet','estructura') AND language = 'en'`
+  (14 004 trozos de 2 139 documentos). La periferia (reciclaje general, microplásticos y salud,
+  ingeniería de proteínas sin PET) sigue en la tabla como contexto, pero ensucia las respuestas
+  si no se filtra. `databricks-gte-large-en` es solo inglés: por eso el filtro de idioma.
 
 Cuando exista, el equipo lo conecta a los agentes con:
 
