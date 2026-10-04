@@ -12,6 +12,9 @@ cualquier otro cliente.
 uv run uvicorn ar_vr_bridge.app:app --host 0.0.0.0 --port 8000 --reload
 ```
 
+**¿Buscas qué datos concretos devuelve cada endpoint?** Está campo a campo, con respuestas
+reales, en **[`DATOS_POR_ENDPOINT.md`](DATOS_POR_ENDPOINT.md)**.
+
 El esquema de los objetos (`Node`, `Edge`, `Citation`, `Validation`) está en
 `ar_vr_bridge/contract.py`, que es la **única fuente de verdad**. Este documento describe el
 transporte; aquel, la forma de los datos.

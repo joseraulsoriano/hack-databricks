@@ -126,6 +126,7 @@ docs/                 Arranque por persona:
   ALCANCE.md            qué hace y qué no hace el proyecto
   VERIFICABILIDAD.md    cómo se justifica cada afirmación y qué admite el lab
   CONTEXTO_AGENTE.md    resumen medido del que se alimenta el orquestador
+  DATOS_POR_ENDPOINT.md qué información saca el agente de cada endpoint, campo a campo
 
 ```
 

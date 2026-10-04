@@ -159,8 +159,9 @@ databricks apps deploy lab-bridge --source-code-path "/Workspace/Users/<tu-usuar
 Base en desarrollo: `http://localhost:8000`. **El visor del equipo espera este puente en
 `:8010`** (`BRIDGE_URL` en `gate/bridge.py`), porque su Gate API ocupa el `:8000`.
 
-Contrato completo en [`API.md`](API.md); esquema en `ar_vr_bridge/contract.py`, que es la única
-fuente de verdad.
+Contrato completo en [`API.md`](API.md); **qué datos devuelve cada endpoint, campo a campo, en
+[`DATOS_POR_ENDPOINT.md`](DATOS_POR_ENDPOINT.md)**; esquema en `ar_vr_bridge/contract.py`, que es
+la única fuente de verdad.
 
 | Método | Ruta | Para qué |
 |---|---|---|
