@@ -58,6 +58,7 @@ class Check(BaseModel):
     value: float
     threshold: float
     detail: str = ""
+    fatal: bool = True           # false => es un aviso; no tumba el veredicto
 
 
 class Validation(BaseModel):
@@ -157,6 +158,44 @@ class ExploreRequest(BaseModel):
     query: str
     query_id: str = ""
     mode: Literal["live", "mock"] = "live"
+
+
+# ---------------------------------------------------------------------------
+# Entrada de hipotesis. El lab no recibe preguntas abiertas: recibe hipotesis
+# que ya traen su respaldo, y la puerta de procedencia decide si entran.
+# Logica en agent_lab/procedencia.py; criterio en docs/VERIFICABILIDAD.md.
+# ---------------------------------------------------------------------------
+
+Verdicto = Literal["ADMITIDA", "ADMITIDA_CON_AVISOS", "RECHAZADA"]
+
+
+class Respaldo(BaseModel):
+    """Una pieza de evidencia que la hipotesis dice que la sostiene."""
+    doc_id: str                  # 'europepmc:29374183'; tiene que estar en documents_curated
+    evidence_span: str           # la frase EXACTA; se coteja literal contra el documento
+    record_id: str = ""          # fila de mutant_stability, si el dato es numerico
+    value: float | None = None   # el numero afirmado; debe aparecer en evidence_span
+    unit: str = ""
+
+
+class HypothesisRequest(BaseModel):
+    statement: str               # la hipotesis, afirmativa y concreta
+    prediction: str              # que se deberia observar si es cierta (medible)
+    variables: list[str] = Field(default_factory=list)   # columnas de pet_activity_ml
+    respaldo: list[Respaldo] = Field(default_factory=list)
+    submitted_by: str = ""
+
+
+class HypothesisReceipt(BaseModel):
+    """Recibo de admision. Reproducible: mismo input y mismo corpus, mismo hash."""
+    schema_version: str = SCHEMA_VERSION
+    receipt_hash: str = ""
+    verdict: Verdicto = "RECHAZADA"
+    admitted: bool = False       # true para ADMITIDA y ADMITIDA_CON_AVISOS
+    checks: list[Check] = Field(default_factory=list)
+    failures: list[str] = Field(default_factory=list)
+    warnings: list[str] = Field(default_factory=list)
+    latency_ms: int = 0
 
 
 class ExploreResponse(BaseModel):

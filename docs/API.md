@@ -25,6 +25,7 @@ transporte; aquel, la forma de los datos.
 | `WS` | `/ws/explore` | **Bucle completo en streaming.** El camino principal | ✅ |
 | `POST` | `/api/v1/explore` | El mismo bucle, respuesta de una pieza | ✅ |
 | `POST` | `/api/v1/approve/{approval_id}` | Responder a una aprobación humana | ✅ |
+| `POST` | `/api/v1/hypothesis` | **Puerta de entrada.** Admite o rechaza una hipótesis por su procedencia | ✅ |
 | `POST` | `/api/v1/ask` | **Camino rápido para la voz.** Solo RAG, < 1,5 s | ⏳ por implementar |
 
 ---
@@ -139,6 +140,60 @@ curl -X POST 'http://localhost:8000/api/v1/approve/ap_3c1d?decision=approve'
 ```
 
 Si el identificador no existe o ya venció, devuelve `"status": "unknown_approval"`.
+
+---
+
+## `POST /api/v1/hypothesis` — puerta de entrada del lab
+
+El lab no recibe preguntas abiertas: recibe **hipótesis que ya traen su respaldo**, y esta puerta
+decide si entran. El veredicto es una función determinista de los datos curados, no un juicio:
+el mismo input sobre el mismo corpus devuelve el mismo `receipt_hash`.
+
+Criterio completo, lista de comprobaciones y límites en **[`VERIFICABILIDAD.md`](VERIFICABILIDAD.md)**.
+
+```bash
+curl -X POST http://localhost:8000/api/v1/hypothesis \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "statement": "Las mutaciones que rigidizan el sitio activo suben la Tm de una PET hidrolasa",
+    "prediction": "Las variantes con Tm publicada sobre 80 C conservan actividad medida a 60 C",
+    "variables": ["temperature_c", "activity"],
+    "respaldo": [{"doc_id": "europepmc:111",
+                  "evidence_span": "The engineered variant LCC-ICCG showed a melting temperature of 85.8 degrees C.",
+                  "value": 85.8, "unit": "C"}],
+    "submitted_by": "human:equipo"
+  }'
+```
+
+| Campo de `respaldo` | Notas |
+|---|---|
+| `doc_id` | Obligatorio. Tiene que existir en `documents_curated` y tener `approved_by` |
+| `evidence_span` | Obligatorio, ≥ 40 caracteres. Se coteja **literal** contra el texto del documento |
+| `value` | Opcional. Si viene, el número debe estar escrito en `evidence_span` |
+| `record_id` | Opcional. Fila de `mutant_stability`; debe tener `verified = true` |
+
+**Respuesta**
+
+```json
+{
+  "schema_version": "1.0",
+  "receipt_hash": "5091b7670ecc7470",
+  "verdict": "ADMITIDA_CON_AVISOS",
+  "admitted": true,
+  "checks": [{"name":"respaldo[0].span_literal","passed":true,"value":1.0,"threshold":1.0,"detail":"","fatal":true}],
+  "failures": [],
+  "warnings": ["fuentes_distintas: toda la evidencia viene de: europepmc"],
+  "latency_ms": 412
+}
+```
+
+`verdict` es `ADMITIDA`, `ADMITIDA_CON_AVISOS` o `RECHAZADA`; `admitted` es `false` sólo en la
+última. Cada comprobación que falla aparece en `failures` por nombre, y su `detail` dice por qué
+—incluido el caso en que la frase existe pero en **otro** documento, que es el error de
+atribución típico.
+
+Si el warehouse no responde, la respuesta es `RECHAZADA` con `corpus_inaccesible`: sin poder
+cotejar, nada se admite a ciegas.
 
 ---
 

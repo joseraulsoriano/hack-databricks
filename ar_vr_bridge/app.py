@@ -25,7 +25,8 @@ from fastapi.staticfiles import StaticFiles
 
 from ar_vr_bridge import mock, retrieval
 from ar_vr_bridge.contract import (
-    SCHEMA_VERSION, Answer, AskRequest, AskResponse, ExploreRequest, ExploreResponse,
+    SCHEMA_VERSION, Answer, AskRequest, AskResponse, Check, ExploreRequest, ExploreResponse,
+    HypothesisReceipt, HypothesisRequest,
 )
 
 STATIC = Path(__file__).parent / "static"
@@ -73,6 +74,46 @@ async def ask(request: AskRequest) -> AskResponse:
     )
     return AskResponse(query_id=query_id, citations=citations, has_evidence=has_evidence,
                        tts_text=tts_text, latency_ms=latency_ms)
+
+
+@app.post("/api/v1/hypothesis", response_model=HypothesisReceipt)
+async def hypothesis(request: HypothesisRequest) -> HypothesisReceipt:
+    """Puerta de entrada del lab: admite o rechaza una hipótesis por su procedencia.
+
+    No juzga si la hipótesis es cierta. Comprueba que lo que dice que la sostiene
+    existe, está aprobado por una persona y dice literalmente lo que se le atribuye.
+    El veredicto es una función determinista de los datos: el mismo input sobre el
+    mismo corpus devuelve el mismo `receipt_hash`, y cualquiera lo puede recalcular.
+
+    Criterio completo y lista de comprobaciones en `docs/VERIFICABILIDAD.md`.
+    """
+    from agent_lab import procedencia, procedencia_fuente
+
+    inicio = time.monotonic()
+    entrada = request.model_dump()
+
+    doc_ids = [r["doc_id"] for r in entrada["respaldo"]]
+    record_ids = [r["record_id"] for r in entrada["respaldo"] if r.get("record_id")]
+    try:
+        corpus, registros, columnas = await asyncio.gather(
+            asyncio.to_thread(procedencia_fuente.cargar_corpus, doc_ids),
+            asyncio.to_thread(procedencia_fuente.cargar_registros, record_ids),
+            asyncio.to_thread(procedencia_fuente.cargar_columnas),
+        )
+    except Exception as exc:  # sin warehouse no se puede cotejar: no se admite a ciegas
+        return HypothesisReceipt(
+            verdict="RECHAZADA", admitted=False, latency_ms=int((time.monotonic() - inicio) * 1000),
+            failures=["corpus_inaccesible"],
+            checks=[Check(name="corpus_inaccesible", passed=False, value=0, threshold=1,
+                          detail=f"no se pudo leer el corpus curado: {exc}")])
+
+    recibo = procedencia.verificar(entrada, corpus, registros, columnas)
+    return HypothesisReceipt(
+        receipt_hash=recibo["recibo_hash"], verdict=recibo["veredicto"],
+        admitted=recibo["veredicto"] != "RECHAZADA",
+        checks=[Check(**c) for c in recibo["checks"]],
+        failures=recibo["fallos"], warnings=recibo["avisos"],
+        latency_ms=int((time.monotonic() - inicio) * 1000))
 
 
 async def _events(query: str, query_id: str, mode: str):
