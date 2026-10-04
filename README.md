@@ -110,7 +110,9 @@ docs/                 Arranque por persona:
   PROMPT_CURACION.md    curación de datos, índice RAG y modelos
   PROMPT_VISOR.md       visor Quest 2 y voz con ElevenLabs
   CURACION.md           tablas, índice y cuidados estadísticos
+  API.md                endpoints que consumen la web y las gafas
   VISOR.md              contrato de eventos y presupuesto de rendimiento
+  CASOS_DE_PRUEBA.md    14 casos para probar el bucle completo
   ALCANCE.md            qué hace y qué no hace el proyecto
 
 ```
