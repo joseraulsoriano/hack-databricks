@@ -142,7 +142,7 @@ No tienes que crearlo: solo el índice encima.
   relevance, language, subtopic, subtopic_secondary, evidence_type, enzyme`
 - **Filtro por defecto recomendado** para las consultas de los agentes:
   `relevance IN ('nucleo_pet_enzima','enzima_plasticos_sin_pet','estructura') AND language = 'en'`
-  (14 004 trozos de 2 139 documentos). La periferia (reciclaje general, microplásticos y salud,
+  (13 997 trozos de 2 139 documentos). La periferia (reciclaje general, microplásticos y salud,
   ingeniería de proteínas sin PET) sigue en la tabla como contexto, pero ensucia las respuestas
   si no se filtra. `databricks-gte-large-en` es solo inglés: por eso el filtro de idioma.
 

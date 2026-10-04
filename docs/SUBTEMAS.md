@@ -18,7 +18,7 @@ resumen, y una lista de temas por palabras clave): `explorar_subtemas.py`.
 | `mecanismo_simulacion` | Mecanismo y simulación (dinámica molecular, QM/MM) | 1 215 |
 | `produccion_sistemas_celulares` | Producción y sistemas celulares (expresión, *display*, célula completa) | 1 160 |
 | `descubrimiento_caracterizacion` | Descubrimiento y caracterización | 1 140 |
-| *(NULL)* | Sin subtema | 11 681 |
+| *(NULL)* | Sin subtema | 11 673 |
 
 **Por trozo y no por documento**: el 80 % de los documentos toca tres o más temas, y un trozo es
 mucho más específico. `subtopic_secondary` lleva el segundo tema cuando pesa casi como el primero.
@@ -60,4 +60,4 @@ verdad de referencia.
 ```sql
 relevance IN ('nucleo_pet_enzima','enzima_plasticos_sin_pet','estructura') AND language = 'en'
 ```
-14 004 trozos de 2 139 documentos. La periferia queda como contexto, no se borra.
+13 997 trozos de 2 139 documentos. La periferia queda como contexto, no se borra.

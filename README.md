@@ -64,7 +64,7 @@ Zenodo        ─┘                     │                          índice AI
 | Conectores (5 fuentes) | ✅ 4 945 documentos en `documents_staging` |
 | Tablas numéricas para modelar | ✅ `enzyme_features` (213), `pet_activity` (1 570), vista `pet_activity_ml` |
 | Endpoint de Vector Search `lab-vs` | ✅ creado y ONLINE |
-| Curación → `documents_curated` | ✅ 21 915 trozos de 3 424 documentos, con subtema, idioma y relevancia (`docs/SUBTEMAS.md`) |
+| Curación → `documents_curated` | ✅ 21 907 trozos de 3 424 documentos, con subtema, idioma y relevancia (`docs/SUBTEMAS.md`) |
 | Índice AI Search sobre `documents_curated` | ⏳ |
 | Grafo de agentes Omnigent | ⏳ |
 | Puente API + visor Quest 2 | ⏳ |
